@@ -1,0 +1,507 @@
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react'
+import {
+  useStore, uid, plainText, countWords, findMentions, novelWords, chapterWords, sceneWords,
+  SCENE_STATUSES, CODEX_TYPES, CODEX_COLORS,
+} from '../store.jsx'
+
+const TOOLS = [
+  { cmd: 'bold', icon: 'B', title: 'Bold (Ctrl+B)', style: { fontWeight: 700 } },
+  { cmd: 'italic', icon: 'I', title: 'Italic (Ctrl+I)', style: { fontStyle: 'italic' } },
+  { cmd: 'underline', icon: 'U', title: 'Underline (Ctrl+U)', style: { textDecoration: 'underline' } },
+  { cmd: 'strikeThrough', icon: 'S', title: 'Strikethrough', style: { textDecoration: 'line-through' } },
+]
+
+/* Uncontrolled contentEditable — mounted once per scene, commits upward */
+const SceneProse = React.memo(function SceneProse({ sceneId, initialContent, onCommit, onFocusScene }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (ref.current) ref.current.innerHTML = initialContent || '<p></p>'
+  }, []) // eslint-disable-line
+  return (
+    <div
+      ref={ref}
+      className="prose ms-prose"
+      contentEditable
+      suppressContentEditableWarning
+      spellCheck
+      data-placeholder="Write this scene…"
+      onFocus={() => onFocusScene(sceneId)}
+      onInput={() => onCommit(sceneId, ref.current.innerHTML, ref.current.textContent)}
+      onBlur={() => onCommit(sceneId, ref.current.innerHTML, ref.current.textContent)}
+    />
+  )
+}, (prev, next) => prev.sceneId === next.sceneId) // never re-render for content changes; DOM owns the text
+
+export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, onOpenCodexEntry, focusMode, onToggleFocus }) {
+  const { state, dispatch } = useStore()
+  const scrollRef = useRef(null)
+  const sectionRefs = useRef(new Map())
+  const textCache = useRef(new Map())
+  const spyLockUntil = useRef(0)
+  const [showMentions, setShowMentions] = useState(true)
+  const [selWords, setSelWords] = useState(0)
+  const [, setTextTick] = useState(0)
+  const [selPop, setSelPop] = useState(null) // { x, y, text }
+  const [toast, setToast] = useState(null)   // { id, name }
+  const [hoverCard, setHoverCard] = useState(null) // { entry, x, y }
+  const selTimer = useRef(null)
+  const toastTimer = useRef(null)
+  const hoverThrottle = useRef(0)
+
+  const active = useMemo(() => {
+    for (const c of state.chapters)
+      for (const s of c.scenes) if (s.id === activeSceneId) return { scene: s, chapter: c }
+    return null
+  }, [state.chapters, activeSceneId])
+
+  const commit = useCallback((id, html, text) => {
+    dispatch({ type: 'scene/update', id, patch: { content: html } })
+    textCache.current.set(id, text || '')
+    setTextTick((t) => t + 1)
+  }, [dispatch])
+
+  const exec = (cmd, value = null) => {
+    document.execCommand(cmd, false, value)
+  }
+  const formatBlock = (tag) => {
+    const current = document.queryCommandValue('formatBlock')
+    exec('formatBlock', current?.toLowerCase() === tag ? '<p>' : `<${tag}>`)
+  }
+
+  /* selection word count */
+  /* selection: word count + quick "add to codex" popover */
+  useEffect(() => {
+    const maybeShowPopover = () => {
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed) { setSelPop(null); return }
+      const raw = sel.toString()
+      const text = raw.trim().replace(/\s+/g, ' ')
+      if (!text || text.length > 60 || text.split(' ').length > 6 || /\n/.test(raw.trim())) {
+        setSelPop(null)
+        return
+      }
+      const node = sel.anchorNode
+      const el = node?.nodeType === 1 ? node : node?.parentElement
+      if (!el?.closest('.ms-prose')) { setSelPop(null); return }
+      const rect = sel.getRangeAt(0).getBoundingClientRect()
+      if (!rect.width && !rect.height) { setSelPop(null); return }
+      setSelPop({ x: rect.left + rect.width / 2, y: rect.top, text })
+    }
+    const onSel = () => {
+      const sel = window.getSelection()
+      setSelWords(sel && !sel.isCollapsed ? countWords(sel.toString()) : 0)
+      clearTimeout(selTimer.current)
+      selTimer.current = setTimeout(maybeShowPopover, 250)
+    }
+    document.addEventListener('selectionchange', onSel)
+    return () => {
+      document.removeEventListener('selectionchange', onSel)
+      clearTimeout(selTimer.current)
+    }
+  }, [])
+
+  /* dotted-underline highlighting of codex mentions (CSS Custom Highlight API) */
+  const highlightOn = state.settings.highlightCodex !== false
+  const isWordChar = (c) => !!c && /[\p{L}\p{N}]/u.test(c)
+
+  /* name/alias → entry lookup, longest first so specific names win */
+  const needleList = useMemo(() => {
+    const list = []
+    for (const e of state.codex) {
+      for (const n of [e.name, ...(e.aliases || [])]) {
+        const s = (n || '').trim().toLowerCase()
+        if (s.length >= 3 && !list.some((x) => x.s === s)) list.push({ s, entry: e })
+      }
+    }
+    return list.sort((a, b) => b.s.length - a.s.length)
+  }, [state.codex])
+
+  const clearHighlights = () => {
+    for (let i = 0; i < CODEX_COLORS.length; i++) CSS.highlights.delete(`codex-c${i}`)
+    CSS.highlights.delete('codex-mention')
+  }
+
+  const applyHighlights = useCallback(() => {
+    if (typeof CSS === 'undefined' || !('highlights' in CSS)) return
+    clearHighlights()
+    if (!highlightOn) return
+    const root = scrollRef.current
+    if (!needleList.length || !root) return
+    const buckets = new Map() // color index (or -1) -> ranges
+    for (const prose of root.querySelectorAll('.ms-prose')) {
+      const walker = document.createTreeWalker(prose, NodeFilter.SHOW_TEXT)
+      let node
+      while ((node = walker.nextNode())) {
+        const lower = node.data.toLowerCase()
+        for (const { s: needle, entry } of needleList) {
+          let i = lower.indexOf(needle)
+          while (i !== -1) {
+            if (!isWordChar(lower[i - 1]) && !isWordChar(lower[i + needle.length])) {
+              const r = document.createRange()
+              r.setStart(node, i)
+              r.setEnd(node, i + needle.length)
+              const ci = CODEX_COLORS.indexOf(entry.color)
+              if (!buckets.has(ci)) buckets.set(ci, [])
+              buckets.get(ci).push(r)
+            }
+            i = lower.indexOf(needle, i + needle.length)
+          }
+        }
+      }
+    }
+    for (const [ci, ranges] of buckets) {
+      const name = ci >= 0 ? `codex-c${ci}` : 'codex-mention'
+      CSS.highlights.set(name, new Highlight(...ranges))
+    }
+  }, [needleList, highlightOn])
+
+  useEffect(() => {
+    const t = setTimeout(applyHighlights, 350)
+    return () => clearTimeout(t)
+  }, [applyHighlights, state.chapters])
+
+  useEffect(() => () => {
+    if (typeof CSS !== 'undefined' && 'highlights' in CSS) clearHighlights()
+  }, []) // eslint-disable-line
+
+  /* wiki hover card over underlined mentions */
+  const findMentionAt = (node, offset) => {
+    if (!node || node.nodeType !== 3 || offset == null) return null
+    if (!node.parentElement?.closest('.ms-prose')) return null
+    const lower = node.data.toLowerCase()
+    for (const { s, entry } of needleList) {
+      let i = lower.indexOf(s)
+      while (i !== -1) {
+        if (
+          offset >= i && offset <= i + s.length &&
+          !isWordChar(lower[i - 1]) && !isWordChar(lower[i + s.length])
+        ) return entry
+        i = lower.indexOf(s, i + s.length)
+      }
+    }
+    return null
+  }
+
+  const onProseMouseMove = (e) => {
+    if (!highlightOn) return
+    const now = Date.now()
+    if (now - hoverThrottle.current < 80) return
+    hoverThrottle.current = now
+    let node = null, offset = null
+    if (document.caretPositionFromPoint) {
+      const p = document.caretPositionFromPoint(e.clientX, e.clientY)
+      node = p?.offsetNode; offset = p?.offset
+    } else if (document.caretRangeFromPoint) {
+      const r = document.caretRangeFromPoint(e.clientX, e.clientY)
+      node = r?.startContainer; offset = r?.startOffset
+    }
+    const entry = findMentionAt(node, offset)
+    if (entry) {
+      setHoverCard((h) => (h && h.entry.id === entry.id ? h : { entry, x: e.clientX, y: e.clientY }))
+    } else {
+      setHoverCard(null)
+    }
+  }
+
+  const normName = (t) => t.toLowerCase()
+  const existingEntry = selPop
+    ? state.codex.find(
+        (e) =>
+          normName(e.name) === normName(selPop.text) ||
+          (e.aliases || []).some((a) => normName(a) === normName(selPop.text))
+      )
+    : null
+
+  const quickAdd = (type) => {
+    if (!selPop) return
+    const id = uid()
+    dispatch({ type: 'codex/add', id, entryType: type, name: selPop.text })
+    setSelPop(null)
+    window.getSelection()?.removeAllRanges()
+    setToast({ id, name: selPop.text, icon: CODEX_TYPES.find((t) => t.id === type)?.icon })
+    clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 4000)
+  }
+
+  /* scroll to scene on request (sidebar click / search) */
+  useEffect(() => {
+    if (!scrollReq?.id) return
+    const el = sectionRefs.current.get(scrollReq.id)
+    if (!el) return
+    spyLockUntil.current = Date.now() + 900
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    el.classList.add('flash')
+    const t = setTimeout(() => el.classList.remove('flash'), 1400)
+    return () => clearTimeout(t)
+  }, [scrollReq])
+
+  /* scrollspy: active scene follows the viewport */
+  const onScroll = () => {
+    if (Date.now() < spyLockUntil.current) return
+    const cont = scrollRef.current
+    if (!cont) return
+    const probe = cont.getBoundingClientRect().top + 130
+    let best = null
+    for (const [id, el] of sectionRefs.current) {
+      const r = el.getBoundingClientRect()
+      if (r.top <= probe && r.bottom > probe - 40) { best = id; break }
+      if (r.top <= probe) best = id
+    }
+    if (best && best !== activeSceneId) onActiveSceneChange(best)
+  }
+
+  const registerSection = (id) => (el) => {
+    if (el) sectionRefs.current.set(id, el)
+    else sectionRefs.current.delete(id)
+  }
+
+  const activeText = active
+    ? textCache.current.get(active.scene.id) ?? plainText(active.scene.content)
+    : ''
+  const mentions = useMemo(
+    () => findMentions(activeText, state.codex),
+    [activeText, state.codex]
+  )
+
+  const totalWords = novelWords(state.chapters)
+  const activeWords = countWords(activeText)
+  const typeIcon = (t) => CODEX_TYPES.find((c) => c.id === t)?.icon || '📄'
+  const statusOf = (s) => SCENE_STATUSES.find((x) => x.id === s.status)
+
+  const hasScenes = state.chapters.some((c) => c.scenes.length > 0)
+
+  return (
+    <div className="editor-wrap">
+      <div className="editor-main">
+        <div className="toolbar ms-toolbar">
+          {TOOLS.map((t) => (
+            <button key={t.cmd} className="tool-btn" title={t.title} style={t.style}
+              onMouseDown={(e) => e.preventDefault()} onClick={() => exec(t.cmd)}>
+              {t.icon}
+            </button>
+          ))}
+          <span className="tool-sep" />
+          <button className="tool-btn" title="Heading" onMouseDown={(e) => e.preventDefault()} onClick={() => formatBlock('h2')}>H</button>
+          <button className="tool-btn" title="Blockquote" onMouseDown={(e) => e.preventDefault()} onClick={() => formatBlock('blockquote')}>❝</button>
+          <button className="tool-btn" title="Scene break (horizontal rule)" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('insertHorizontalRule')}>—</button>
+          <span className="tool-sep" />
+          <button className="tool-btn" title="Undo (Ctrl+Z)" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('undo')}>↩</button>
+          <button className="tool-btn" title="Redo (Ctrl+Y)" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('redo')}>↪</button>
+          <button className="tool-btn" title="Clear formatting" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('removeFormat')}>⌫</button>
+
+          <span className="toolbar-spacer" />
+
+          {active && (
+            <>
+              <span className="ms-here" title="Where you are">
+                <span className="status-dot" style={{ background: statusOf(active.scene)?.color }} />
+                {active.scene.title}
+              </span>
+              <select
+                className="status-select"
+                value={active.scene.status}
+                onChange={(e) => dispatch({ type: 'scene/update', id: active.scene.id, patch: { status: e.target.value } })}
+                title="Status of the current scene"
+              >
+                {SCENE_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </>
+          )}
+          <button
+            className={`tool-btn ${highlightOn ? 'toggled' : ''}`}
+            title={highlightOn ? 'Hide codex mention underlines' : 'Underline codex mentions in the text'}
+            onClick={() => dispatch({ type: 'settings/update', patch: { highlightCodex: !highlightOn } })}
+          >
+            <span className="hl-icon">A</span>
+          </button>
+          <button className="tool-btn" title={focusMode ? 'Exit focus mode (Esc)' : 'Focus mode'} onClick={onToggleFocus}>
+            {focusMode ? '⤡' : '⤢'}
+          </button>
+          <button className="tool-btn" title={showMentions ? 'Hide codex panel' : 'Show codex panel'} onClick={() => setShowMentions((v) => !v)}>
+            📚
+          </button>
+        </div>
+
+        <div
+          className="ms-scroll"
+          ref={scrollRef}
+          onScroll={() => { onScroll(); setSelPop(null); setHoverCard(null) }}
+          onMouseMove={onProseMouseMove}
+          onMouseLeave={() => setHoverCard(null)}
+        >
+          <div className="ms-doc">
+            {!hasScenes && (
+              <div className="ms-doc-empty">
+                <h2>{state.novel.title || 'Your novel'}</h2>
+                <p>The manuscript is empty. Add a chapter and a scene from the panel on the left, and start writing.</p>
+              </div>
+            )}
+
+            {state.chapters.map((ch, ci) => (
+              <div className="ms-chapter" key={ch.id}>
+                <div className="ms-chapter-head">
+                  <span className="ms-chapter-kicker">
+                    Chapter {ci + 1} · {ch.scenes.length} scene{ch.scenes.length === 1 ? '' : 's'} · {chapterWords(ch).toLocaleString()} words
+                  </span>
+                  <input
+                    className="ms-chapter-title"
+                    value={ch.title}
+                    placeholder="Chapter title"
+                    onChange={(e) => dispatch({ type: 'chapter/update', id: ch.id, patch: { title: e.target.value } })}
+                  />
+                </div>
+
+                {ch.scenes.map((sc, si) => {
+                  const isActive = sc.id === activeSceneId
+                  return (
+                    <React.Fragment key={sc.id}>
+                      {si > 0 && <div className="ms-divider" aria-hidden="true">⁂</div>}
+                      <section
+                        className={`ms-scene ${isActive ? 'active' : ''}`}
+                        ref={registerSection(sc.id)}
+                        onClick={() => { if (!isActive) onActiveSceneChange(sc.id) }}
+                      >
+                        <div className="ms-scene-head">
+                          <span className="status-dot" style={{ background: statusOf(sc)?.color }} title={statusOf(sc)?.label} />
+                          <input
+                            className="ms-scene-title"
+                            value={sc.title}
+                            placeholder="Scene title"
+                            onFocus={() => onActiveSceneChange(sc.id)}
+                            onChange={(e) => dispatch({ type: 'scene/update', id: sc.id, patch: { title: e.target.value } })}
+                          />
+                          <span className="ms-scene-words">{sceneWords(sc).toLocaleString()} w</span>
+                        </div>
+                        <SceneProse
+                          sceneId={sc.id}
+                          initialContent={sc.content}
+                          onCommit={commit}
+                          onFocusScene={onActiveSceneChange}
+                        />
+                      </section>
+                    </React.Fragment>
+                  )
+                })}
+
+                <button className="ms-add-scene" onClick={() => dispatch({ type: 'scene/add', chapterId: ch.id })}>
+                  + Add scene to {ch.title || `Chapter ${ci + 1}`}
+                </button>
+              </div>
+            ))}
+
+            {state.chapters.length > 0 && (
+              <button className="ms-add-chapter" onClick={() => dispatch({ type: 'chapter/add' })}>
+                + New chapter
+              </button>
+            )}
+            <div className="ms-doc-tail" />
+          </div>
+        </div>
+
+        {selPop && (
+          <div
+            className="sel-popover"
+            style={{ left: selPop.x, top: selPop.y }}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            {existingEntry ? (
+              <button className="sel-open" onClick={() => { setSelPop(null); onOpenCodexEntry(existingEntry.id) }}>
+                <span className="mention-swatch" style={{ background: existingEntry.color }} />
+                {CODEX_TYPES.find((t) => t.id === existingEntry.type)?.icon} {existingEntry.name} — open in codex
+              </button>
+            ) : (
+              <>
+                <span className="sel-label">Add “{selPop.text}” as</span>
+                {CODEX_TYPES.map((t) => (
+                  <button key={t.id} className="sel-type" title={t.label} onClick={() => quickAdd(t.id)}>
+                    {t.icon}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+
+        {hoverCard && (() => {
+          const e = hoverCard.entry
+          const t = CODEX_TYPES.find((c) => c.id === e.type)
+          const relCount = (state.relationships || []).filter((r) => r.fromId === e.id || r.toId === e.id).length
+          return (
+            <div
+              className="codex-hovercard"
+              style={{
+                left: Math.min(hoverCard.x, window.innerWidth - 340),
+                top: Math.min(hoverCard.y + 20, window.innerHeight - 240),
+                '--hc-accent': e.color,
+              }}
+              onMouseLeave={() => setHoverCard(null)}
+            >
+              <div className="hc-head">
+                <span className="hc-icon">{t?.icon}</span>
+                <span className="hc-name">{e.name}</span>
+                <span className="hc-type">{t?.label}</span>
+              </div>
+              {e.aliases?.length > 0 && <p className="hc-aliases">also: {e.aliases.join(', ')}</p>}
+              {e.oneLiner && <p className="hc-lede">{e.oneLiner}</p>}
+              {e.description && <p className="hc-desc">{e.description}</p>}
+              <div className="hc-foot">
+                {relCount > 0 && <span className="hc-rels">{relCount} relationship{relCount === 1 ? '' : 's'}</span>}
+                <span className="foot-spacer" />
+                <button onClick={() => { setHoverCard(null); onOpenCodexEntry(e.id) }}>Open in codex →</button>
+              </div>
+            </div>
+          )
+        })()}
+
+        {toast && (
+          <div className="sel-toast">
+            <span>{toast.icon} “{toast.name}” added to codex</span>
+            <button onClick={() => { setToast(null); onOpenCodexEntry(toast.id) }}>Edit entry →</button>
+            <button className="toast-x" onClick={() => setToast(null)}>✕</button>
+          </div>
+        )}
+
+        <footer className="editor-foot ms-foot">
+          {active && (
+            <span className="ms-crumb">
+              {active.chapter.title} <span className="foot-dim">›</span> {active.scene.title}
+            </span>
+          )}
+          {active && <span className="foot-dim">· {activeWords.toLocaleString()} words in scene</span>}
+          {selWords > 0 && <span className="foot-sel">· {selWords} selected</span>}
+          <span className="foot-spacer" />
+          <span>{totalWords.toLocaleString()} total</span>
+          <span className="foot-dim">· autosaved</span>
+        </footer>
+      </div>
+
+      {showMentions && !focusMode && (
+        <aside className="mentions-panel">
+          <div className="mentions-head">
+            <span>Codex in this scene</span>
+          </div>
+          {!active ? (
+            <p className="mentions-empty">Click into a scene to see which codex entries appear in it.</p>
+          ) : mentions.length === 0 ? (
+            <p className="mentions-empty">
+              No codex entries detected in “{active.scene.title}” yet. As you write names from your codex (or their aliases), they'll appear here.
+            </p>
+          ) : (
+            <div className="mentions-list">
+              {mentions.map(({ entry, count }) => (
+                <button key={entry.id} className="mention-card" onClick={() => onOpenCodexEntry(entry.id)} title="Open in codex">
+                  <span className="mention-swatch" style={{ background: entry.color }} />
+                  <span className="mention-body">
+                    <span className="mention-name">{typeIcon(entry.type)} {entry.name}</span>
+                    {entry.oneLiner && <span className="mention-desc">{entry.oneLiner}</span>}
+                  </span>
+                  <span className="mention-count">×{count}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </aside>
+      )}
+    </div>
+  )
+}
