@@ -271,6 +271,183 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     else sectionRefs.current.delete(id)
   }
 
+  /* ---- manuscript pages: a stable word-based coordinate system ---------
+     250 words = 1 manuscript page (the trade convention). Tick marks are
+     margin decorations derived purely from word counts — identical on any
+     screen, font size, or theme, and they barely drift when earlier text
+     is edited. */
+  const WORDS_PER_PAGE = 250
+  const [msTicks, setMsTicks] = useState([])
+  const [curPage, setCurPage] = useState(1)
+  const ticksRef = useRef([])
+  const tickTimer = useRef(null)
+
+  const computeTicks = useCallback(() => {
+    const doc = scrollRef.current?.querySelector('.ms-doc')
+    if (!doc) return
+    const docTop = doc.getBoundingClientRect().top
+    const ticks = []
+    let words = 0
+    let nextPage = 2 // page 1 is the top of the manuscript
+    for (const prose of doc.querySelectorAll('.ms-prose')) {
+      for (const block of prose.children) {
+        const w = countWords(block.textContent || '')
+        if (!w) continue
+        const after = words + w
+        let stack = 0
+        while (after >= (nextPage - 1) * WORDS_PER_PAGE) {
+          ticks.push({ n: nextPage, y: Math.round(block.getBoundingClientRect().top - docTop) + stack * 18 })
+          nextPage += 1
+          stack += 1
+        }
+        words = after
+      }
+    }
+    ticksRef.current = ticks
+    setMsTicks((prev) => (JSON.stringify(prev) === JSON.stringify(ticks) ? prev : ticks))
+  }, [])
+
+  useEffect(() => {
+    clearTimeout(tickTimer.current)
+    tickTimer.current = setTimeout(computeTicks, 300)
+    return () => clearTimeout(tickTimer.current)
+  }, [computeTicks, state.chapters, state.groups, state.settings.fontSize, state.settings.align, state.settings.para, state.settings.marginX, state.settings.pageSize])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      clearTimeout(tickTimer.current)
+      tickTimer.current = setTimeout(computeTicks, 250)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [computeTicks])
+
+  const totalMsPages = Math.max(1, Math.ceil(novelWords(state.chapters) / WORDS_PER_PAGE))
+
+  const updateCurPage = () => {
+    const cont = scrollRef.current
+    const doc = cont?.querySelector('.ms-doc')
+    if (!cont || !doc) return
+    const probe = cont.getBoundingClientRect().top + 150 - doc.getBoundingClientRect().top
+    let page = 1
+    for (const t of ticksRef.current) {
+      if (t.y <= probe) page = t.n
+      else break
+    }
+    setCurPage(page)
+  }
+
+  const goToPage = (n) => {
+    const cont = scrollRef.current
+    const doc = cont?.querySelector('.ms-doc')
+    if (!cont || !doc) return
+    spyLockUntil.current = Date.now() + 900
+    if (n <= 1) { cont.scrollTo({ top: 0, behavior: 'smooth' }); return }
+    const tick = ticksRef.current.find((t) => t.n === n) || ticksRef.current[ticksRef.current.length - 1]
+    if (!tick) return
+    const docTopInScroll = doc.getBoundingClientRect().top - cont.getBoundingClientRect().top + cont.scrollTop
+    cont.scrollTo({ top: docTopInScroll + tick.y - 130, behavior: 'smooth' })
+  }
+
+  const promptGoToPage = () => {
+    const v = window.prompt(`Go to manuscript page (1–${totalMsPages})`, String(curPage))
+    if (!v) return
+    const n = parseInt(v, 10)
+    if (Number.isFinite(n)) goToPage(Math.max(1, Math.min(totalMsPages, n)))
+  }
+
+  /* ---- bookmarks: named anchors that travel with the text --------------- */
+  const [bmOpen, setBmOpen] = useState(false)
+  const bookmarks = state.bookmarks || []
+
+  useEffect(() => {
+    if (!bmOpen) return
+    const close = () => setBmOpen(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [bmOpen])
+
+  const addBookmark = () => {
+    if (!active) return
+    const sel = window.getSelection()
+    let quote = ''
+    if (sel && !sel.isCollapsed) {
+      quote = sel.toString().trim().replace(/\s+/g, ' ').slice(0, 90)
+    } else if (sel?.anchorNode) {
+      const el = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement
+      const block = el?.closest('.ms-prose') ? el.closest('p,h1,h2,h3,blockquote,li') : null
+      quote = (block?.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 90)
+    }
+    const name = window.prompt('Bookmark name', quote.slice(0, 48) || activeTitle || 'Bookmark')
+    if (name === null) return
+    dispatch({
+      type: 'bookmark/add',
+      bm: {
+        id: uid(),
+        name: name.trim() || quote.slice(0, 48) || 'Bookmark',
+        sceneId: activeId,
+        quote,
+        createdAt: Date.now(),
+      },
+    })
+  }
+
+  const jumpToBookmark = (bm) => {
+    setBmOpen(false)
+    const sec = sectionRefs.current.get(bm.sceneId)
+    const cont = scrollRef.current
+    if (!sec || !cont) return
+    spyLockUntil.current = Date.now() + 900
+    let rect = null
+    if (bm.quote) {
+      const prose = sec.querySelector('.ms-prose')
+      const idx = prose ? (prose.textContent || '').indexOf(bm.quote) : -1
+      if (prose && idx !== -1) {
+        let rem = idx
+        const w = document.createTreeWalker(prose, NodeFilter.SHOW_TEXT)
+        let n
+        while ((n = w.nextNode())) {
+          if (rem < n.length) {
+            const r = document.createRange()
+            r.setStart(n, rem)
+            r.setEnd(n, Math.min(rem + Math.min(bm.quote.length, 30), n.length))
+            rect = r.getBoundingClientRect()
+            break
+          }
+          rem -= n.length
+        }
+      }
+    }
+    if (rect && rect.height) {
+      cont.scrollTo({ top: cont.scrollTop + rect.top - cont.getBoundingClientRect().top - 160, behavior: 'smooth' })
+    } else {
+      sec.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    sec.classList.add('flash')
+    setTimeout(() => sec.classList.remove('flash'), 1400)
+    onActiveSceneChange(bm.sceneId)
+  }
+
+  const sceneTitleOf = (id) => {
+    for (const c of state.chapters) {
+      if (c.id === id) return c.title
+      for (const s of c.scenes) if (s.id === id) return s.title
+    }
+    return 'missing scene'
+  }
+
+  const BookmarkIcon = ({ plus = false }) => (
+    <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true">
+      <path
+        d="M5.5 2.5h9v15l-4.5-3.6L5.5 17.5z"
+        fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"
+      />
+      {plus && <path d="M10 6v4M8 8h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />}
+    </svg>
+  )
+
   const activeId = active ? (active.kind === 'scene' ? active.scene.id : active.chapter.id) : null
   const activeContent = active ? (active.kind === 'scene' ? active.scene.content : active.chapter.content) : ''
   const activeTitle = active ? (active.kind === 'scene' ? active.scene.title : active.chapter.title) : ''
@@ -444,6 +621,16 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
               )}
             </>
           )}
+          <button className="tool-btn" title="Bookmark this spot (uses selection or current paragraph)" onMouseDown={(e) => e.preventDefault()} onClick={addBookmark}>
+            <BookmarkIcon plus />
+          </button>
+          <button
+            className={`tool-btn ${bmOpen ? 'toggled' : ''}`}
+            title="Bookmarks"
+            onClick={(e) => { e.stopPropagation(); setBmOpen((v) => !v) }}
+          >
+            <BookmarkIcon />
+          </button>
           <button
             className={`tool-btn ${highlightOn ? 'toggled' : ''}`}
             title={highlightOn ? 'Hide codex mention underlines' : 'Underline codex mentions in the text'}
@@ -459,14 +646,46 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
           </button>
         </div>
 
+        {bmOpen && (
+          <div className="bm-menu" onClick={(e) => e.stopPropagation()}>
+            <div className="bm-menu-head">Bookmarks</div>
+            {bookmarks.length === 0 ? (
+              <p className="bm-empty">
+                No bookmarks yet. Select a passage (or just click into it) and press the ribbon-plus button to pin the moment — bookmarks follow the text through edits.
+              </p>
+            ) : (
+              bookmarks.map((bm) => (
+                <div className="bm-row" key={bm.id}>
+                  <button className="bm-jump" onClick={() => jumpToBookmark(bm)} title={bm.quote || bm.name}>
+                    <span className="bm-name">{bm.name}</span>
+                    <span className="bm-context">{sceneTitleOf(bm.sceneId)}</span>
+                  </button>
+                  <button
+                    className="mini-icon danger"
+                    title="Delete bookmark"
+                    onClick={() => dispatch({ type: 'bookmark/delete', id: bm.id })}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
         <div
           className={`ms-scroll`}
           ref={scrollRef}
-          onScroll={() => { onScroll(); setSelPop(null); setHoverCard(null) }}
+          onScroll={() => { onScroll(); updateCurPage(); setSelPop(null); setHoverCard(null) }}
           onMouseMove={onProseMouseMove}
           onMouseLeave={() => setHoverCard(null)}
         >
           <div className="ms-doc">
+            {msTicks.map((t) => (
+              <div className="ms-tick" key={t.n} style={{ top: t.y }} aria-hidden="true">
+                <span>{t.n}</span>
+              </div>
+            ))}
             {state.chapters.length === 0 && (
               <div className="ms-doc-empty">
                 <h2>{state.novel.title || 'Your novel'}</h2>
@@ -561,6 +780,10 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
           {active && <span className="foot-dim">· {activeWords.toLocaleString()} words {active.kind === 'scene' ? 'in scene' : 'in chapter'}</span>}
           {selWords > 0 && <span className="foot-sel">· {selWords} selected</span>}
           <span className="foot-spacer" />
+          <button className="foot-page" title="Go to manuscript page… (250 words = 1 page)" onClick={promptGoToPage}>
+            p. {curPage} / {totalMsPages}
+          </button>
+          <span className="foot-dim">·</span>
           <span>{totalWords.toLocaleString()} total</span>
           <span className="foot-dim">· autosaved</span>
         </footer>

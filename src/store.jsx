@@ -375,6 +375,7 @@ const loadState = (novelId) => {
       if (parsed && parsed.chapters && parsed.codex) {
         if (!parsed.timeline) parsed.timeline = seedTimeline()
         if (!parsed.relationships) parsed.relationships = seedRelationships(parsed.codex)
+        if (!parsed.bookmarks) parsed.bookmarks = []
         return ensureHierarchyDefaults(parsed)
       }
     }
@@ -609,6 +610,16 @@ function reducer(state, action) {
       }
     case 'rel/delete':
       return { ...state, relationships: (state.relationships || []).filter((r) => r.id !== action.id) }
+
+    case 'bookmark/add':
+      return { ...state, bookmarks: [...(state.bookmarks || []), action.bm] }
+    case 'bookmark/update':
+      return {
+        ...state,
+        bookmarks: (state.bookmarks || []).map((b) => (b.id === action.id ? { ...b, ...action.patch } : b)),
+      }
+    case 'bookmark/delete':
+      return { ...state, bookmarks: (state.bookmarks || []).filter((b) => b.id !== action.id) }
 
     case 'timeline/update':
       return { ...state, timeline: { ...state.timeline, ...action.patch } }
