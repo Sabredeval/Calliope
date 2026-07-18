@@ -36,9 +36,15 @@ export default function LibraryView({ onOpen }) {
   }, [])
 
   const refresh = () => setLib(loadLibrary())
+  const nextTheme = (value) => (value === 'dark' ? 'light' : value === 'light' ? 'parchment' : 'dark')
+  const themeButton = {
+    dark: { title: 'Switch to light mode', icon: '☀️' },
+    light: { title: 'Switch to parchment mode', icon: '📜' },
+    parchment: { title: 'Switch to dark mode', icon: '🌙' },
+  }
 
   const toggleTheme = () => {
-    const next = { ...lib, theme: lib.theme === 'dark' ? 'light' : 'dark' }
+    const next = { ...lib, theme: nextTheme(lib.theme || 'dark') }
     saveLibrary(next)
     setLib(next)
   }
@@ -102,8 +108,8 @@ export default function LibraryView({ onOpen }) {
         <div className="lib-actions">
           <button className="ghost-btn" onClick={() => fileRef.current?.click()}>⇪ Import</button>
           <button className="primary-btn" onClick={handleNew}>+ New novel</button>
-          <button className="icon-btn" title={lib.theme === 'dark' ? 'Light mode' : 'Dark mode'} onClick={toggleTheme}>
-            {lib.theme === 'dark' ? '☀️' : '🌙'}
+          <button className="icon-btn" title={themeButton[lib.theme]?.title || 'Switch theme'} onClick={toggleTheme}>
+            {themeButton[lib.theme]?.icon || '☀️'}
           </button>
           <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={handleImportFile} />
         </div>
@@ -161,9 +167,7 @@ export default function LibraryView({ onOpen }) {
         </div>
       )}
 
-      <footer className="lib-foot">
-        Novels are stored in your browser. Export each one to a file for backups — imports work on any machine.
-      </footer>
+      <footer className="lib-foot"></footer>
     </div>
   )
 }

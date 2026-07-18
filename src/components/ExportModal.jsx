@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useStore, plainText, novelWords, CODEX_TYPES } from '../store.jsx'
+import { useStore, plainText, novelWords, buildManuscriptTree, CODEX_TYPES } from '../store.jsx'
 
 function htmlToMarkdown(html) {
   const div = document.createElement('div')
@@ -50,21 +50,37 @@ export default function ExportModal({ onClose }) {
 
   const buildManuscript = () => {
     const md = format === 'md'
+    const headingPrefix = (depth) => '#'.repeat(Math.min(depth + 2, 6))
     const lines = []
     lines.push(md ? `# ${state.novel.title || 'Untitled'}` : (state.novel.title || 'Untitled').toUpperCase())
     if (state.novel.author) lines.push(md ? `*by ${state.novel.author}*` : `by ${state.novel.author}`)
     lines.push('')
-    for (const ch of state.chapters) {
-      lines.push(md ? `## ${ch.title}` : `\n${ch.title.toUpperCase()}\n`)
+
+    const walk = (node, depth) => {
+      if (node.type === 'group') {
+        lines.push(md ? `${headingPrefix(depth)} ${node.group.title}` : `\n${node.group.title.toUpperCase()}\n`)
+        lines.push('')
+        for (const child of node.children) walk(child, depth + 1)
+        return
+      }
+      const ch = node.chapter
+      lines.push(md ? `${headingPrefix(depth)} ${ch.title}` : `\n${ch.title.toUpperCase()}\n`)
       lines.push('')
-      ch.scenes.forEach((sc, i) => {
-        if (includeSummaries && sc.summary) lines.push(md ? `> _${sc.summary}_\n` : `[${sc.summary}]\n`)
-        const body = md ? htmlToMarkdown(sc.content) : plainText(sc.content)
-        lines.push(body)
-        if (i < ch.scenes.length - 1) lines.push(md ? '\n* * *\n' : '\n* * *\n')
-      })
+      if (ch.scenes.length) {
+        ch.scenes.forEach((sc, i) => {
+          if (includeSummaries && sc.summary) lines.push(md ? `> _${sc.summary}_\n` : `[${sc.summary}]\n`)
+          const body = md ? htmlToMarkdown(sc.content) : plainText(sc.content)
+          lines.push(body)
+          if (i < ch.scenes.length - 1) lines.push(md ? '\n* * *\n' : '\n* * *\n')
+        })
+      } else {
+        lines.push(md ? htmlToMarkdown(ch.content) : plainText(ch.content))
+      }
       lines.push('')
     }
+
+    for (const node of buildManuscriptTree(state.chapters, state.groups)) walk(node, 0)
+
     if (includeCodex && state.codex.length) {
       lines.push(md ? '## Appendix: Codex' : '\nAPPENDIX: CODEX\n')
       for (const t of CODEX_TYPES) {

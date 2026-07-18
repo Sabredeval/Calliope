@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
-import { useStore, plainText, CODEX_TYPES } from '../store.jsx'
+import { useStore, plainText, flatScenes, CODEX_TYPES } from '../store.jsx'
 
 function snippet(text, q, radius = 60) {
   const i = text.toLowerCase().indexOf(q.toLowerCase())
@@ -21,17 +21,15 @@ export default function SearchModal({ onClose, onOpenScene, onOpenCodex }) {
     const query = q.trim().toLowerCase()
     if (!query) return []
     const out = []
-    for (const ch of state.chapters) {
-      for (const sc of ch.scenes) {
-        const body = plainText(sc.content)
-        const hay = `${sc.title} ${sc.summary} ${body}`.toLowerCase()
-        if (hay.includes(query)) {
-          out.push({
-            kind: 'scene', id: sc.id, title: sc.title,
-            context: ch.title,
-            snippet: snippet(`${sc.summary} ${body}`.trim(), query),
-          })
-        }
+    for (const sc of flatScenes(state.chapters)) {
+      const body = plainText(sc.content)
+      const hay = `${sc.title} ${sc.summary} ${body}`.toLowerCase()
+      if (hay.includes(query)) {
+        out.push({
+          kind: 'scene', id: sc.id, title: sc.title,
+          context: sc.isChapterFlow ? 'Chapter' : sc.chapterTitle,
+          snippet: snippet(`${sc.summary} ${body}`.trim(), query),
+        })
       }
     }
     for (const e of state.codex) {

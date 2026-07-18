@@ -53,6 +53,26 @@
   --scrollbar: #cfc9bd;
 }
 
+[data-theme='parchment'] {
+  --paper: #fbf2dc;
+  --bg: #f7ead2;
+  --bg-panel: #f2e3c4;
+  --bg-raised: #f8f1df;
+  --bg-hover: #ead9b5;
+  --bg-page: #fff8e1;
+  --border: #d8c6a7;
+  --border-soft: #e6d6bb;
+  --text: #4a3c2a;
+  --text-dim: #796a53;
+  --text-faint: #a38d6f;
+  --accent: #9f7f3f;
+  --accent-soft: rgba(159, 127, 63, 0.14);
+  --accent-text: #ffffff;
+  --danger: #a2443c;
+  --shadow: 0 8px 30px rgba(80, 65, 45, 0.18);
+  --scrollbar: #c0a785;
+}
+
 * { box-sizing: border-box; }
 
 html, body, #root { height: 100%; margin: 0; }
@@ -97,15 +117,122 @@ textarea { resize: vertical; line-height: 1.5; }
 
 .app {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100vh;
   overflow: hidden;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .body {
   flex: 1;
   display: flex;
   min-height: 0;
+}
+
+/* ---------- activity bar (VS Code style) ---------- */
+
+.activitybar {
+  width: 48px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 0;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+}
+
+.ab-btn {
+  position: relative;
+  width: 44px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--text-faint);
+  transition: color 0.15s, background 0.15s;
+}
+.ab-btn:hover { color: var(--text); background: var(--bg-hover); }
+.ab-btn.active { color: var(--text); }
+.ab-btn.active::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 20%;
+  bottom: 20%;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.ab-img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  opacity: 0.55;
+  filter: grayscale(0.5);
+  transition: opacity 0.15s, filter 0.15s;
+}
+.ab-btn:hover .ab-img,
+.ab-btn.active .ab-img { opacity: 1; filter: none; }
+
+.ab-theme { font-size: 15px; }
+
+.ab-sep { width: 22px; height: 1px; background: var(--border); margin: 5px 0; flex-shrink: 0; }
+.ab-spacer { flex: 1; }
+
+.goal-line {
+  height: 2px;
+  flex-shrink: 0;
+  background: var(--border-soft);
+}
+.goal-line-fill { height: 100%; background: var(--accent); transition: width 0.4s; }
+
+.app.focus-mode .activitybar,
+.app.focus-mode .goal-line { display: none; }
+
+/* ---------- appearance settings ---------- */
+
+/* navigation: top bar mode stacks vertically, hides the goal line
+   (the top bar has its own word-progress) */
+.app.nav-topbar { flex-direction: column; }
+.app.nav-topbar .goal-line { display: none; }
+.app.nav-topbar .topbar .icon-btn svg { display: block; }
+
+/* editor text size */
+.app.fs-small .ms-prose { font-size: 15px; line-height: 1.7; }
+.app.fs-large .ms-prose { font-size: 18.5px; line-height: 1.85; }
+
+/* text alignment */
+.app.align-left .ms-prose { text-align: left; hyphens: none; }
+
+/* page style: flat removes the A4 sheet */
+.app.page-flat .ms-doc {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  min-height: 0;
+  padding-top: 40px;
+  padding-bottom: 40px;
+}
+
+.settings-section {
+  margin: 6px 0 -4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  border-top: 1px solid var(--border-soft);
+  padding-top: 14px;
 }
 
 /* ---------- top bar ---------- */
@@ -164,6 +291,13 @@ textarea { resize: vertical; line-height: 1.5; }
   font-weight: 600;
 }
 .tab-icon { margin-right: 2px; }
+.tab-icon-img {
+  width: 16px; height: 16px;
+  margin-right: 4px;
+  border-radius: 4px;
+  vertical-align: -3px;
+  object-fit: cover;
+}
 
 .topbar-right { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: flex-end; }
 
@@ -222,32 +356,71 @@ textarea { resize: vertical; line-height: 1.5; }
 }
 .mini-btn:hover { background: var(--accent-soft); }
 
+/* header's + Act / + Chapter stay out of sight until you hover the header —
+   keeps the panel calm when you're just reading/navigating */
+.sidebar-header .mini-btn { opacity: 0; transition: opacity 0.12s; }
+.sidebar-header:hover .mini-btn { opacity: 1; }
+
 .sidebar-scroll { flex: 1; overflow-y: auto; padding: 0 8px 20px; }
 .sidebar-hint { color: var(--text-faint); font-size: 13px; padding: 8px; }
 
 .chapter-block { margin-bottom: 6px; }
 
-.chapter-row, .scene-row {
+.chapter-row, .scene-row, .group-row {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
   border-radius: var(--radius);
-  cursor: default;
+  cursor: grab;
+  border-left: 2px solid transparent;
 }
-.chapter-row:hover, .scene-row:hover { background: var(--bg-hover); }
+.chapter-row:hover, .scene-row:hover, .group-row:hover { background: var(--bg-hover); }
+
+/* ---------- drag-and-drop (binder-style reordering/reparenting) ---------- */
+
+.chapter-row.dragging, .group-row.dragging { opacity: 0.35; }
+
+/* top/bottom thirds of a row = "drop before/after it" — a thin accent rule
+   drawn just inside the row edge, matching the selection rule's language */
+.chapter-row.drop-before, .group-row.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.chapter-row.drop-after, .group-row.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* middle third of an act row = "nest inside it" */
+.group-row.drop-inside {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.root-drop-zone { min-height: 48px; border-radius: var(--radius); margin-top: 2px; }
+.root-drop-zone.drop-after { box-shadow: inset 0 0 0 1px var(--border); background: var(--bg-hover); }
+
+.chapter-row:active, .group-row:active { cursor: grabbing; }
 
 .collapse-btn {
   width: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-faint);
-  font-size: 10px;
   flex-shrink: 0;
 }
+.collapse-btn.placeholder { pointer-events: none; }
 
-.chapter-title {
+.chevron { transition: transform 0.15s ease; }
+.chevron.open { transform: rotate(90deg); }
+
+.tree-icon { flex-shrink: 0; }
+.tree-icon.folder { color: var(--text-dim); }
+.tree-icon.doc { color: var(--text-faint); }
+.chapter-row.selected .tree-icon,
+.scene-row.selected .tree-icon { color: var(--accent); }
+
+.chapter-title, .group-title {
   flex: 1;
   font-weight: 600;
   font-size: 13px;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -260,8 +433,8 @@ textarea { resize: vertical; line-height: 1.5; }
 }
 
 .row-actions { display: none; align-items: center; gap: 2px; flex-shrink: 0; }
-.chapter-row:hover .row-actions, .scene-row:hover .row-actions { display: inline-flex; }
-.chapter-row:hover .chapter-words, .scene-row:hover .scene-words { display: none; }
+.chapter-row:hover .row-actions, .scene-row:hover .row-actions, .group-row:hover .row-actions { display: inline-flex; }
+.chapter-row:hover .chapter-words, .scene-row:hover .scene-words, .group-row:hover .chapter-words { display: none; }
 
 .mini-icon {
   width: 20px; height: 20px;
@@ -277,8 +450,27 @@ textarea { resize: vertical; line-height: 1.5; }
 .scene-list { margin-left: 14px; padding-left: 8px; border-left: 1px solid var(--border-soft); }
 
 .scene-row { cursor: pointer; }
-.scene-row.selected { background: var(--accent-soft); }
-.scene-row.selected .scene-title { color: var(--accent); font-weight: 600; }
+
+/* selection reads as a quiet left rule + tinted label, not a filled row —
+   keeps the tree calm even with several things selected/expanded at once */
+.scene-row.selected, .chapter-row.selected {
+  background: transparent;
+  border-left-color: var(--accent);
+  padding-left: 6px;
+}
+.scene-row.selected .scene-title,
+.chapter-row.selected .chapter-title { color: var(--accent); }
+
+/* ---------- groups (default label "Act" — nest above chapters) ---------- */
+
+.group-block { margin-bottom: 6px; margin-left: calc(var(--depth, 0) * 12px); }
+.group-children { margin-left: 14px; padding-left: 8px; border-left: 1px solid var(--border-soft); }
+/* hidden until you hover anywhere in the act (its row or its contents) — the
+   whole block stays hoverable so the mouse never has to cross a dead gap to
+   reach the buttons once they appear */
+.group-add-row { display: flex; gap: 4px; padding: 2px 8px 8px; opacity: 0; transition: opacity 0.12s; }
+.group-block:hover .group-add-row { opacity: 1; }
+.group-add-row .mini-btn { font-size: 11px; padding: 3px 7px; }
 
 .status-dot {
   width: 8px; height: 8px;
@@ -302,7 +494,10 @@ textarea { resize: vertical; line-height: 1.5; }
   font-size: 12px;
   color: var(--text-faint);
   border-radius: var(--radius);
+  opacity: 0;
+  transition: opacity 0.12s;
 }
+.chapter-block:hover .add-scene-btn { opacity: 1; }
 .add-scene-btn:hover { color: var(--accent); background: var(--bg-hover); }
 
 .inline-rename {
@@ -1104,6 +1299,30 @@ textarea { resize: vertical; line-height: 1.5; }
 .ms-doc-empty { padding: 120px 20px; text-align: center; color: var(--text-dim); }
 .ms-doc-empty h2 { font-family: var(--font-prose); color: var(--text); }
 
+/* Act/Part-style group dividers — bigger and more spaced than a chapter
+   heading, since a group wraps a whole run of chapters underneath it */
+.ms-group { padding: 0; }
+.ms-group + .ms-group,
+.ms-group + .ms-chapter,
+.ms-chapter + .ms-group { margin-top: 130px; }
+.ms-group-head { text-align: center; margin-bottom: 20px; }
+.ms-group-head + .ms-chapter,
+.ms-group-head + .ms-group { margin-top: 0; }
+.ms-group-title {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 6px 0;
+  font-family: var(--font-prose);
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--text-faint);
+  text-align: center;
+}
+
 .ms-chapter { padding: 0; }
 .ms-chapter + .ms-chapter { margin-top: 110px; }
 
@@ -1235,6 +1454,19 @@ textarea { resize: vertical; line-height: 1.5; }
 .app.focus-mode .ms-doc { border: none; box-shadow: none; background: transparent; }
 .app.focus-mode .ms-scene-head, .app.focus-mode .ms-summary { opacity: 0.4; }
 .app.focus-mode .ms-scene-head:hover { opacity: 1; }
+
+/* plain prose: scene/chapter chrome no longer surfaces on hover at all —
+   only chapter/scene headings and the manuscript text remain visible */
+.plain-prose .ms-chapter-kicker,
+.plain-prose .ms-add-scene,
+.plain-prose .ms-add-chapter,
+.plain-prose .ms-scene-head .status-dot,
+.plain-prose .ms-scene-head .ms-scene-words {
+  display: none !important;
+}
+.plain-prose .ms-scene-head {
+  opacity: 1 !important;
+}
 
 /* ---------- codex mention underlines (one per palette color) ---------- */
 
@@ -1488,39 +1720,6 @@ textarea { resize: vertical; line-height: 1.5; }
 
 .sidebar-tools { display: inline-flex; align-items: center; gap: 4px; }
 .mini-icon.toggled { background: var(--accent-soft); color: var(--accent); }
-
-.chapter-num {
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--text-dim);
-}
-
-.chapter-pulse {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 8px 5px 32px;
-}
-.pulse-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 3px;
-  padding: 0;
-  border: 1px solid transparent;
-  transition: transform 0.1s;
-}
-.pulse-dot:hover { transform: scale(1.35); }
-.pulse-dot.current { border-color: var(--text); }
-.pulse-stats { font-size: 10px; color: var(--text-faint); margin-left: 4px; }
 
 .scene-cell { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .scene-row.outline { align-items: flex-start; }
@@ -1879,6 +2078,34 @@ textarea { resize: vertical; line-height: 1.5; }
   max-width: 1060px;
   margin: 0 auto;
   padding: 40px 32px 24px;
+  background: transparent;
+}
+
+html[data-theme='dark'] body {
+  background-image:
+    linear-gradient(180deg, rgba(10, 10, 14, 0.6) 0%, rgba(10, 10, 14, 0.25) 30%, rgba(10, 10, 14, 0.8) 100%),
+    url('/dark_background.png');
+  background-size: cover;
+  background-position: center top;
+  background-attachment: fixed;
+}
+
+html[data-theme='light'] body {
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.7) 30%, rgba(255, 255, 255, 0.9) 100%),
+    url('/light_background.png');
+  background-size: cover;
+  background-position: center top;
+  background-attachment: fixed;
+}
+
+html[data-theme='parchment'] body {
+  background-image:
+    linear-gradient(180deg, rgba(255, 250, 225, 0.95) 0%, rgba(255, 242, 205, 0.6) 35%, rgba(255, 245, 213, 0.95) 100%),
+    url('/light_background.png');
+  background-size: cover;
+  background-position: center top;
+  background-attachment: fixed;
 }
 
 .lib-header {

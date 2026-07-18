@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import {
   useStore, uid, plainText, countWords, findMentions, novelWords, chapterWords, sceneWords,
-  SCENE_STATUSES, CODEX_TYPES, CODEX_COLORS,
+  buildManuscriptTree, SCENE_STATUSES, CODEX_TYPES, CODEX_COLORS, SCENES_ENABLED,
 } from '../store.jsx'
 
 const TOOLS = [
@@ -11,8 +11,9 @@ const TOOLS = [
   { cmd: 'strikeThrough', icon: 'S', title: 'Strikethrough', style: { textDecoration: 'line-through' } },
 ]
 
-/* Uncontrolled contentEditable — mounted once per scene, commits upward */
-const SceneProse = React.memo(function SceneProse({ sceneId, initialContent, onCommit, onFocusScene }) {
+/* Uncontrolled contentEditable — mounted once per scene (or per flow-mode
+   chapter, when kind='chapter'), commits upward */
+const SceneProse = React.memo(function SceneProse({ sceneId, initialContent, onCommit, onFocusScene, kind = 'scene' }) {
   const ref = useRef(null)
   useEffect(() => {
     if (ref.current) ref.current.innerHTML = initialContent || '<p></p>'
@@ -26,8 +27,8 @@ const SceneProse = React.memo(function SceneProse({ sceneId, initialContent, onC
       spellCheck
       data-placeholder="Write this scene…"
       onFocus={() => onFocusScene(sceneId)}
-      onInput={() => onCommit(sceneId, ref.current.innerHTML, ref.current.textContent)}
-      onBlur={() => onCommit(sceneId, ref.current.innerHTML, ref.current.textContent)}
+      onInput={() => onCommit(sceneId, ref.current.innerHTML, ref.current.textContent, kind)}
+      onBlur={() => onCommit(sceneId, ref.current.innerHTML, ref.current.textContent, kind)}
     />
   )
 }, (prev, next) => prev.sceneId === next.sceneId) // never re-render for content changes; DOM owns the text
@@ -48,14 +49,19 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
   const toastTimer = useRef(null)
   const hoverThrottle = useRef(0)
 
+  // A scene match wins; otherwise activeSceneId may point at a flow-mode
+  // chapter (written directly, no scenes) — those act as their own "scene"
+  // for the purposes of the toolbar, footer, and mentions panel.
   const active = useMemo(() => {
     for (const c of state.chapters)
-      for (const s of c.scenes) if (s.id === activeSceneId) return { scene: s, chapter: c }
+      for (const s of c.scenes) if (s.id === activeSceneId) return { kind: 'scene', scene: s, chapter: c }
+    const flowChapter = state.chapters.find((c) => c.scenes.length === 0 && c.id === activeSceneId)
+    if (flowChapter) return { kind: 'chapter', chapter: flowChapter }
     return null
   }, [state.chapters, activeSceneId])
 
-  const commit = useCallback((id, html, text) => {
-    dispatch({ type: 'scene/update', id, patch: { content: html } })
+  const commit = useCallback((id, html, text, kind = 'scene') => {
+    dispatch({ type: kind === 'chapter' ? 'chapter/update' : 'scene/update', id, patch: { content: html } })
     textCache.current.set(id, text || '')
     setTextTick((t) => t + 1)
   }, [dispatch])
@@ -102,6 +108,10 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
 
   /* dotted-underline highlighting of codex mentions (CSS Custom Highlight API) */
   const highlightOn = state.settings.highlightCodex !== false
+  // "plain prose" mode: hide the per-scene/chapter chrome (status dot, word
+  // counts, add-scene/add-chapter buttons, chapter kicker) entirely instead
+  // of just fading it in on hover — leaves only headings and manuscript text.
+  const plainProse = state.settings.plainProse === true
   const isWordChar = (c) => !!c && /[\p{L}\p{N}]/u.test(c)
 
   /* name/alias → entry lookup, longest first so specific names win */
@@ -255,9 +265,10 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     else sectionRefs.current.delete(id)
   }
 
-  const activeText = active
-    ? textCache.current.get(active.scene.id) ?? plainText(active.scene.content)
-    : ''
+  const activeId = active ? (active.kind === 'scene' ? active.scene.id : active.chapter.id) : null
+  const activeContent = active ? (active.kind === 'scene' ? active.scene.content : active.chapter.content) : ''
+  const activeTitle = active ? (active.kind === 'scene' ? active.scene.title : active.chapter.title) : ''
+  const activeText = active ? (textCache.current.get(activeId) ?? plainText(activeContent)) : ''
   const mentions = useMemo(
     () => findMentions(activeText, state.codex),
     [activeText, state.codex]
@@ -268,7 +279,117 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
   const typeIcon = (t) => CODEX_TYPES.find((c) => c.id === t)?.icon || '📄'
   const statusOf = (s) => SCENE_STATUSES.find((x) => x.id === s.status)
 
-  const hasScenes = state.chapters.some((c) => c.scenes.length > 0)
+  const tree = useMemo(() => buildManuscriptTree(state.chapters, state.groups), [state.chapters, state.groups])
+  const chapterSiblings = (groupId) => state.chapters.filter((c) => (c.groupId ?? null) === (groupId ?? null))
+
+  // Walks the Act/Part/.../Chapter tree in display order. Groups render as a
+  // heading wrapping their children; a chapter with scenes renders each scene
+  // as before, while a flow-mode chapter (no scenes) renders one continuous
+  // prose block bound directly to its own content.
+  const renderNode = (node, depth) => {
+    if (node.type === 'group') {
+      return (
+        <div className="ms-group" key={node.group.id} data-depth={depth}>
+          <div className="ms-group-head">
+            <input
+              className="ms-group-title"
+              value={node.group.title}
+              placeholder="Act title"
+              onChange={(e) => dispatch({ type: 'group/update', id: node.group.id, patch: { title: e.target.value } })}
+            />
+          </div>
+          {node.children.map((child) => renderNode(child, depth + 1))}
+        </div>
+      )
+    }
+
+    const ch = node.chapter
+    const siblings = chapterSiblings(ch.groupId)
+    const ci = siblings.findIndex((c) => c.id === ch.id)
+    const isFlow = ch.scenes.length === 0
+    const flowActive = isFlow && ch.id === activeSceneId
+
+    return (
+      <div className="ms-chapter" key={ch.id}>
+        <div className="ms-chapter-head">
+          <span className="ms-chapter-kicker">
+            Chapter {ci + 1} · {isFlow ? 'flowing text' : `${ch.scenes.length} scene${ch.scenes.length === 1 ? '' : 's'}`} · {chapterWords(ch).toLocaleString()} words
+          </span>
+          <input
+            className="ms-chapter-title"
+            value={ch.title}
+            placeholder="Chapter title"
+            onChange={(e) => dispatch({ type: 'chapter/update', id: ch.id, patch: { title: e.target.value } })}
+          />
+        </div>
+
+        {isFlow ? (
+          <section
+            className={`ms-scene ${flowActive ? 'active' : ''}`}
+            ref={registerSection(ch.id)}
+            onClick={() => { if (!flowActive) onActiveSceneChange(ch.id) }}
+          >
+            <SceneProse
+              sceneId={ch.id}
+              initialContent={ch.content}
+              onCommit={commit}
+              onFocusScene={onActiveSceneChange}
+              kind="chapter"
+            />
+          </section>
+        ) : (
+          ch.scenes.map((sc, si) => {
+            const isActive = sc.id === activeSceneId
+            return (
+              <React.Fragment key={sc.id}>
+                {si > 0 && <div className="ms-divider" aria-hidden="true">⁂</div>}
+                <section
+                  className={`ms-scene ${isActive ? 'active' : ''}`}
+                  ref={registerSection(sc.id)}
+                  onClick={() => { if (!isActive) onActiveSceneChange(sc.id) }}
+                >
+                  <div className="ms-scene-head">
+                    <span className="status-dot" style={{ background: statusOf(sc)?.color }} title={statusOf(sc)?.label} />
+                    <input
+                      className="ms-scene-title"
+                      value={sc.title}
+                      placeholder="Scene title"
+                      onFocus={() => onActiveSceneChange(sc.id)}
+                      onChange={(e) => dispatch({ type: 'scene/update', id: sc.id, patch: { title: e.target.value } })}
+                    />
+                    <span className="ms-scene-words">{sceneWords(sc).toLocaleString()} w</span>
+                  </div>
+                  <SceneProse
+                    sceneId={sc.id}
+                    initialContent={sc.content}
+                    onCommit={commit}
+                    onFocusScene={onActiveSceneChange}
+                  />
+                </section>
+              </React.Fragment>
+            )
+          })
+        )}
+
+        {SCENES_ENABLED && (
+          <button
+            className="ms-add-scene"
+            onClick={() => {
+              if (isFlow) {
+                const newId = uid()
+                dispatch({ type: 'chapter/splitToScenes', id: ch.id, newSceneId: newId })
+                onActiveSceneChange(newId)
+              } else {
+                dispatch({ type: 'scene/add', chapterId: ch.id })
+              }
+            }}
+          >
+            {isFlow ? `Split "${ch.title || 'this chapter'}" into scenes` : `+ Add scene to ${ch.title || `Chapter ${ci + 1}`}`}
+          </button>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="editor-wrap">
@@ -284,6 +405,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
           <button className="tool-btn" title="Heading" onMouseDown={(e) => e.preventDefault()} onClick={() => formatBlock('h2')}>H</button>
           <button className="tool-btn" title="Blockquote" onMouseDown={(e) => e.preventDefault()} onClick={() => formatBlock('blockquote')}>❝</button>
           <button className="tool-btn" title="Scene break (horizontal rule)" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('insertHorizontalRule')}>—</button>
+          <button className="tool-btn" title="New chapter" onMouseDown={(e) => e.preventDefault()} onClick={() => dispatch({ type: 'chapter/add' })}>+</button>
           <span className="tool-sep" />
           <button className="tool-btn" title="Undo (Ctrl+Z)" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('undo')}>↩</button>
           <button className="tool-btn" title="Redo (Ctrl+Y)" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('redo')}>↪</button>
@@ -294,17 +416,19 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
           {active && (
             <>
               <span className="ms-here" title="Where you are">
-                <span className="status-dot" style={{ background: statusOf(active.scene)?.color }} />
-                {active.scene.title}
+                {active.kind === 'scene' && <span className="status-dot" style={{ background: statusOf(active.scene)?.color }} />}
+                {activeTitle}
               </span>
-              <select
-                className="status-select"
-                value={active.scene.status}
-                onChange={(e) => dispatch({ type: 'scene/update', id: active.scene.id, patch: { status: e.target.value } })}
-                title="Status of the current scene"
-              >
-                {SCENE_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-              </select>
+              {active.kind === 'scene' && (
+                <select
+                  className="status-select"
+                  value={active.scene.status}
+                  onChange={(e) => dispatch({ type: 'scene/update', id: active.scene.id, patch: { status: e.target.value } })}
+                  title="Status of the current scene"
+                >
+                  {SCENE_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </select>
+              )}
             </>
           )}
           <button
@@ -313,6 +437,13 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
             onClick={() => dispatch({ type: 'settings/update', patch: { highlightCodex: !highlightOn } })}
           >
             <span className="hl-icon">A</span>
+          </button>
+          <button
+            className={`tool-btn ${plainProse ? 'toggled' : ''}`}
+            title={plainProse ? 'Show scene info and buttons' : 'Just headings and text — hide scene info and buttons'}
+            onClick={() => dispatch({ type: 'settings/update', patch: { plainProse: !plainProse } })}
+          >
+            <span className="hl-icon">Aa</span>
           </button>
           <button className="tool-btn" title={focusMode ? 'Exit focus mode (Esc)' : 'Focus mode'} onClick={onToggleFocus}>
             {focusMode ? '⤡' : '⤢'}
@@ -323,71 +454,21 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
         </div>
 
         <div
-          className="ms-scroll"
+          className={`ms-scroll ${plainProse ? 'plain-prose' : ''}`}
           ref={scrollRef}
           onScroll={() => { onScroll(); setSelPop(null); setHoverCard(null) }}
           onMouseMove={onProseMouseMove}
           onMouseLeave={() => setHoverCard(null)}
         >
           <div className="ms-doc">
-            {!hasScenes && (
+            {state.chapters.length === 0 && (
               <div className="ms-doc-empty">
                 <h2>{state.novel.title || 'Your novel'}</h2>
-                <p>The manuscript is empty. Add a chapter and a scene from the panel on the left, and start writing.</p>
+                <p>The manuscript is empty. Add a chapter from the panel on the left, and start writing.</p>
               </div>
             )}
 
-            {state.chapters.map((ch, ci) => (
-              <div className="ms-chapter" key={ch.id}>
-                <div className="ms-chapter-head">
-                  <span className="ms-chapter-kicker">
-                    Chapter {ci + 1} · {ch.scenes.length} scene{ch.scenes.length === 1 ? '' : 's'} · {chapterWords(ch).toLocaleString()} words
-                  </span>
-                  <input
-                    className="ms-chapter-title"
-                    value={ch.title}
-                    placeholder="Chapter title"
-                    onChange={(e) => dispatch({ type: 'chapter/update', id: ch.id, patch: { title: e.target.value } })}
-                  />
-                </div>
-
-                {ch.scenes.map((sc, si) => {
-                  const isActive = sc.id === activeSceneId
-                  return (
-                    <React.Fragment key={sc.id}>
-                      {si > 0 && <div className="ms-divider" aria-hidden="true">⁂</div>}
-                      <section
-                        className={`ms-scene ${isActive ? 'active' : ''}`}
-                        ref={registerSection(sc.id)}
-                        onClick={() => { if (!isActive) onActiveSceneChange(sc.id) }}
-                      >
-                        <div className="ms-scene-head">
-                          <span className="status-dot" style={{ background: statusOf(sc)?.color }} title={statusOf(sc)?.label} />
-                          <input
-                            className="ms-scene-title"
-                            value={sc.title}
-                            placeholder="Scene title"
-                            onFocus={() => onActiveSceneChange(sc.id)}
-                            onChange={(e) => dispatch({ type: 'scene/update', id: sc.id, patch: { title: e.target.value } })}
-                          />
-                          <span className="ms-scene-words">{sceneWords(sc).toLocaleString()} w</span>
-                        </div>
-                        <SceneProse
-                          sceneId={sc.id}
-                          initialContent={sc.content}
-                          onCommit={commit}
-                          onFocusScene={onActiveSceneChange}
-                        />
-                      </section>
-                    </React.Fragment>
-                  )
-                })}
-
-                <button className="ms-add-scene" onClick={() => dispatch({ type: 'scene/add', chapterId: ch.id })}>
-                  + Add scene to {ch.title || `Chapter ${ci + 1}`}
-                </button>
-              </div>
-            ))}
+            {tree.map((node) => renderNode(node, 0))}
 
             {state.chapters.length > 0 && (
               <button className="ms-add-chapter" onClick={() => dispatch({ type: 'chapter/add' })}>
@@ -464,10 +545,14 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
         <footer className="editor-foot ms-foot">
           {active && (
             <span className="ms-crumb">
-              {active.chapter.title} <span className="foot-dim">›</span> {active.scene.title}
+              {active.kind === 'scene' ? (
+                <>{active.chapter.title} <span className="foot-dim">›</span> {active.scene.title}</>
+              ) : (
+                active.chapter.title
+              )}
             </span>
           )}
-          {active && <span className="foot-dim">· {activeWords.toLocaleString()} words in scene</span>}
+          {active && <span className="foot-dim">· {activeWords.toLocaleString()} words {active.kind === 'scene' ? 'in scene' : 'in chapter'}</span>}
           {selWords > 0 && <span className="foot-sel">· {selWords} selected</span>}
           <span className="foot-spacer" />
           <span>{totalWords.toLocaleString()} total</span>
@@ -484,7 +569,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
             <p className="mentions-empty">Click into a scene to see which codex entries appear in it.</p>
           ) : mentions.length === 0 ? (
             <p className="mentions-empty">
-              No codex entries detected in “{active.scene.title}” yet. As you write names from your codex (or their aliases), they'll appear here.
+              No codex entries detected in “{activeTitle}” yet. As you write names from your codex (or their aliases), they'll appear here.
             </p>
           ) : (
             <div className="mentions-list">
