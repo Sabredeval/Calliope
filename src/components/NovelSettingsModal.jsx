@@ -4,13 +4,6 @@ import { useStore } from '../store.jsx'
 export default function NovelSettingsModal({ onClose }) {
   const { state, dispatch } = useStore()
   const patch = (p) => dispatch({ type: 'novel/update', patch: p })
-  const setSetting = (p) => dispatch({ type: 'settings/update', patch: p })
-  const theme = state.settings.theme || 'dark'
-  const navStyle = state.settings.navStyle || 'activitybar'
-  const fontSize = state.settings.fontSize || 'medium'
-  const align = state.settings.align || 'justify'
-  const page = state.settings.page || 'paper'
-  const para = state.settings.para || 'book'
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
@@ -39,66 +32,8 @@ export default function NovelSettingsModal({ onClose }) {
           />
         </label>
 
-        <h4 className="settings-section">Appearance</h4>
-
-        <div className="field-row">
-          <label className="field">
-            <span className="field-label">Theme</span>
-            <select value={theme} onChange={(e) => setSetting({ theme: e.target.value })}>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-              <option value="parchment">Parchment</option>
-            </select>
-          </label>
-
-          <label className="field">
-            <span className="field-label">Navigation</span>
-            <select value={navStyle} onChange={(e) => setSetting({ navStyle: e.target.value })}>
-              <option value="activitybar">Activity bar (left, icons)</option>
-              <option value="topbar">Top bar (labels)</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="field-row">
-          <label className="field">
-            <span className="field-label">Editor text size</span>
-            <select value={fontSize} onChange={(e) => setSetting({ fontSize: e.target.value })}>
-              <option value="small">Small</option>
-              <option value="medium">Medium</option>
-              <option value="large">Large</option>
-            </select>
-          </label>
-
-          <label className="field">
-            <span className="field-label">Text alignment</span>
-            <select value={align} onChange={(e) => setSetting({ align: e.target.value })}>
-              <option value="justify">Justified</option>
-              <option value="left">Left-aligned</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="field-row">
-          <label className="field">
-            <span className="field-label">Page style</span>
-            <select value={page} onChange={(e) => setSetting({ page: e.target.value })}>
-              <option value="paper">A4 paper (sheet with margins)</option>
-              <option value="flat">Flat (plain column, no sheet)</option>
-            </select>
-          </label>
-
-          <label className="field">
-            <span className="field-label">Paragraphs</span>
-            <select value={para} onChange={(e) => setSetting({ para: e.target.value })}>
-              <option value="book">Book (first-line indent)</option>
-              <option value="block">Block (no indents)</option>
-            </select>
-          </label>
-        </div>
-
         <p className="settings-note">
-          Everything is saved automatically in your browser. Use Export (⇩) to download your manuscript.
+          Appearance and layout options live in Settings (the gear at the bottom of the bar).
         </p>
 
         <div className="modal-actions">

@@ -8,6 +8,7 @@ import TimelineView from './components/TimelineView.jsx'
 import SearchModal from './components/SearchModal.jsx'
 import ExportModal from './components/ExportModal.jsx'
 import NovelSettingsModal from './components/NovelSettingsModal.jsx'
+import AppSettingsModal from './components/AppSettingsModal.jsx'
 
 /* VS Code-style activity bar icons — monochrome, stroke-based */
 const S = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }
@@ -43,6 +44,13 @@ const Icons = {
       <circle cx="8" cy="14" r="1.7" fill="var(--bg-panel)" stroke="currentColor" strokeWidth="1.5" />
     </svg>
   ),
+  info: (
+    <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
+      <circle {...S} cx="10" cy="10" r="7" />
+      <path {...S} d="M10 9.2v4.3" />
+      <circle cx="10" cy="6.4" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
 }
 
 function Shell({ onLibrary }) {
@@ -53,6 +61,7 @@ function Shell({ onLibrary }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
   const [scrollReq, setScrollReq] = useState(null)
 
@@ -104,6 +113,7 @@ function Shell({ onLibrary }) {
         setSearchOpen(false)
         setExportOpen(false)
         setSettingsOpen(false)
+        setDetailsOpen(false)
         setFocusMode(false)
       }
     }
@@ -122,6 +132,8 @@ function Shell({ onLibrary }) {
     `align-${state.settings.align || 'justify'}`,
     `page-${state.settings.page || 'paper'}`,
     `para-${state.settings.para || 'book'}`,
+    `layout-${state.settings.layout || 'continuous'}`,
+    `size-${state.settings.pageSize || 'a4'}`,
   ].join(' ')
 
   const openScene = (id) => {
@@ -140,7 +152,7 @@ function Shell({ onLibrary }) {
         <header className="topbar">
           <div className="topbar-left">
             <button className="icon-btn" title="Back to library" onClick={onLibrary}>{Icons.home}</button>
-            <div className="novel-meta" onClick={() => setSettingsOpen(true)} title="Novel settings">
+            <div className="novel-meta" onClick={() => setDetailsOpen(true)} title="Novel details">
               <span className="novel-title">{state.novel.title || 'Untitled Novel'}</span>
               <span className="novel-author">{state.novel.author ? `by ${state.novel.author}` : 'click to set details'}</span>
             </div>
@@ -168,7 +180,7 @@ function Shell({ onLibrary }) {
             >
               {themeButton[theme]?.icon || '☀️'}
             </button>
-            <button className="icon-btn" title="Novel settings" onClick={() => setSettingsOpen(true)}>{Icons.settings}</button>
+            <button className="icon-btn" title="Settings" onClick={() => setSettingsOpen(true)}>{Icons.settings}</button>
           </div>
         </header>
       )}
@@ -193,17 +205,20 @@ function Shell({ onLibrary }) {
         <button className="ab-btn" title="Search (Ctrl+K)" onClick={() => setSearchOpen(true)}>{Icons.search}</button>
         <button className="ab-btn" title="Export manuscript" onClick={() => setExportOpen(true)}>{Icons.export}</button>
         <button
+          className="ab-btn"
+          title={`${state.novel.title || 'Untitled Novel'} — novel details`}
+          onClick={() => setDetailsOpen(true)}
+        >
+          {Icons.info}
+        </button>
+        <button
           className="ab-btn ab-theme"
           title={themeButton[theme]?.title || 'Switch theme'}
           onClick={() => dispatch({ type: 'settings/update', patch: { theme: nextTheme(theme) } })}
         >
           {themeButton[theme]?.icon || '☀️'}
         </button>
-        <button
-          className="ab-btn"
-          title={`${state.novel.title || 'Untitled Novel'} — novel settings`}
-          onClick={() => setSettingsOpen(true)}
-        >
+        <button className="ab-btn" title="Settings" onClick={() => setSettingsOpen(true)}>
           {Icons.settings}
         </button>
       </aside>
@@ -248,7 +263,8 @@ function Shell({ onLibrary }) {
         />
       )}
       {exportOpen && <ExportModal onClose={() => setExportOpen(false)} />}
-      {settingsOpen && <NovelSettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <AppSettingsModal onClose={() => setSettingsOpen(false)} />}
+      {detailsOpen && <NovelSettingsModal onClose={() => setDetailsOpen(false)} />}
     </div>
   )
 }
