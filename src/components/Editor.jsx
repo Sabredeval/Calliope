@@ -11,6 +11,39 @@ const TOOLS = [
   { cmd: 'strikeThrough', icon: 'S', title: 'Strikethrough', style: { textDecoration: 'line-through' } },
 ]
 
+/* ---- clean paste ------------------------------------------------------
+   Default contentEditable paste imports the source's full HTML — styled
+   spans, layout divs, fonts — which pollutes the manuscript and breaks
+   measurements. We take plain text only, but rebuild paragraph structure:
+   blank-line-separated text (books, Gutenberg) keeps its paragraphs with
+   hard-wrapped lines rejoined; otherwise each line becomes a paragraph. */
+const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+const toParagraphs = (text) => {
+  const t = text.replace(/\r/g, '')
+  if (/\n[ \t]*\n/.test(t)) {
+    return t
+      .split(/\n[ \t]*\n+/)
+      .map((p) => p.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+  }
+  return t.split(/\n/).map((p) => p.trim()).filter(Boolean)
+}
+
+const handleProsePaste = (e) => {
+  e.preventDefault()
+  const text = e.clipboardData?.getData('text/plain')
+  if (!text) return
+  const paras = toParagraphs(text)
+  if (!paras.length) return
+  if (paras.length === 1) {
+    // single paragraph: insert inline so it doesn't split the current one
+    document.execCommand('insertText', false, paras[0])
+  } else {
+    document.execCommand('insertHTML', false, paras.map((p) => `<p>${escapeHtml(p)}</p>`).join(''))
+  }
+}
+
 /* Uncontrolled contentEditable — mounted once per scene (or per flow-mode
    chapter, when kind='chapter'), commits upward */
 const SceneProse = React.memo(function SceneProse({ sceneId, initialContent, onCommit, onFocusScene, kind = 'scene' }) {
@@ -37,6 +70,7 @@ const SceneProse = React.memo(function SceneProse({ sceneId, initialContent, onC
       spellCheck
       data-placeholder="Write this scene…"
       onFocus={() => onFocusScene(sceneId)}
+      onPaste={handleProsePaste}
       onInput={() => { syncEmpty(); onCommit(sceneId, ref.current.innerHTML, ref.current.textContent, kind) }}
       onBlur={() => { syncEmpty(); onCommit(sceneId, ref.current.innerHTML, ref.current.textContent, kind) }}
     />

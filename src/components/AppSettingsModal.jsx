@@ -89,13 +89,66 @@ export default function AppSettingsModal({ onClose }) {
           </label>
         </div>
 
-        <label className="field">
-          <span className="field-label">Page style</span>
-          <select value={page} onChange={(e) => setSetting({ page: e.target.value })}>
-            <option value="paper">Paper (sheet with margins)</option>
-            <option value="flat">Flat (plain column, no sheet)</option>
-          </select>
-        </label>
+        <div className="field-row">
+          <label className="field">
+            <span className="field-label">Page style</span>
+            <select value={page} onChange={(e) => setSetting({ page: e.target.value })}>
+              <option value="paper">Paper (sheet with margins)</option>
+              <option value="flat">Flat (plain column, no sheet)</option>
+            </select>
+          </label>
+
+          <label className="field">
+            <span className="field-label">Page marks</span>
+            <select
+              value={state.settings.pageMarks || 'ticks'}
+              onChange={(e) => setSetting({ pageMarks: e.target.value })}
+            >
+              <option value="ticks">Margin ticks (subtle)</option>
+              <option value="lines">Full-width lines</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="field-row">
+          <label className="field">
+            <span className="field-label">Page line padding (px)</span>
+            <input
+              type="number"
+              min="0"
+              max="40"
+              value={state.settings.pageMarkPadding ?? ''}
+              placeholder="5"
+              onChange={(e) => setSetting({ pageMarkPadding: e.target.value ? Number(e.target.value) : null })}
+            />
+          </label>
+        </div>
+
+        <div className="field-row">
+          <label className="field">
+            <span className="field-label">Margin — sides (px)</span>
+            <input
+              type="number"
+              min="24"
+              max="220"
+              value={state.settings.marginX || ''}
+              placeholder={pageSize === 'book' ? '60' : '92'}
+              onChange={(e) => setSetting({ marginX: e.target.value ? Number(e.target.value) : null })}
+            />
+          </label>
+
+          <label className="field">
+            <span className="field-label">Margin — top/bottom (px)</span>
+            <input
+              type="number"
+              min="24"
+              max="220"
+              value={state.settings.marginY || ''}
+              placeholder={pageSize === 'book' ? '68' : '88'}
+              onChange={(e) => setSetting({ marginY: e.target.value ? Number(e.target.value) : null })}
+            />
+          </label>
+        </div>
 
         <p className="settings-note">
           Settings apply to this novel and are saved automatically.

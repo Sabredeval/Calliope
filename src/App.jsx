@@ -126,6 +126,12 @@ function Shell({ onLibrary }) {
   const pct = goal ? Math.min(100, Math.round((totalWords / goal) * 100)) : null
 
   const navStyle = state.settings.navStyle || 'activitybar'
+  const isBookSize = (state.settings.pageSize || 'a4') === 'book'
+  const marginX = Math.max(24, Number(state.settings.marginX) || (isBookSize ? 60 : 92))
+  const marginY = Math.max(24, Number(state.settings.marginY) || (isBookSize ? 68 : 88))
+  const pageMarkPaddingValue = Number.isFinite(Number(state.settings.pageMarkPadding))
+    ? Math.max(0, Number(state.settings.pageMarkPadding))
+    : 5
   const appearance = [
     `nav-${navStyle}`,
     `fs-${state.settings.fontSize || 'medium'}`,
@@ -134,6 +140,7 @@ function Shell({ onLibrary }) {
     `para-${state.settings.para || 'book'}`,
     `layout-${state.settings.layout || 'continuous'}`,
     `size-${state.settings.pageSize || 'a4'}`,
+    `marks-${state.settings.pageMarks || 'ticks'}`,
   ].join(' ')
 
   const openScene = (id) => {
@@ -147,7 +154,14 @@ function Shell({ onLibrary }) {
   }
 
   return (
-    <div className={`app ${appearance} ${focusMode ? 'focus-mode' : ''}`}>
+    <div
+      className={`app ${appearance} ${focusMode ? 'focus-mode' : ''}`}
+      style={{
+        '--m-x': `${marginX}px`,
+        '--m-y': `${marginY}px`,
+        '--page-mark-padding': `${pageMarkPaddingValue}px`,
+      }}
+    >
       {navStyle === 'topbar' && (
         <header className="topbar">
           <div className="topbar-left">

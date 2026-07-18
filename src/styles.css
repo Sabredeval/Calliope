@@ -1685,6 +1685,31 @@ textarea { resize: vertical; line-height: 1.5; }
   color: var(--text-faint);
 }
 
+/* page marks as full-width lines: a hairline across the text column with
+   the page number riding it, padded above and below so it breathes in the
+   paragraph gap — pure overlay, the text never moves */
+.app.marks-lines .ms-tick {
+  left: 24px;
+  right: 24px;
+  width: auto;
+  justify-content: center;
+  padding: var(--page-mark-padding, 5px) 0;
+  transform: translateY(-115%);
+}
+.app.marks-lines .ms-tick::before {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.app.marks-lines .ms-tick::after {
+  background: var(--border);
+}
+.app.marks-lines .ms-tick span {
+  padding: 0 12px;
+  color: var(--text-dim);
+}
+
 .editor-main { position: relative; }
 
 .foot-page {
