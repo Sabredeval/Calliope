@@ -121,6 +121,7 @@ function Shell({ onLibrary }) {
     `fs-${state.settings.fontSize || 'medium'}`,
     `align-${state.settings.align || 'justify'}`,
     `page-${state.settings.page || 'paper'}`,
+    `para-${state.settings.para || 'book'}`,
   ].join(' ')
 
   const openScene = (id) => {

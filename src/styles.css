@@ -214,6 +214,9 @@ textarea { resize: vertical; line-height: 1.5; }
 /* text alignment */
 .app.align-left .ms-prose { text-align: left; hyphens: none; }
 
+/* paragraph style: block mode drops the book-style first-line indents */
+.app.para-block .ms-prose p { text-indent: 0; }
+
 /* page style: flat removes the A4 sheet */
 .app.page-flat .ms-doc {
   background: transparent;
@@ -634,8 +637,7 @@ textarea { resize: vertical; line-height: 1.5; }
   color: var(--text-faint);
   font-size: 16px;
 }
-.prose:empty::before,
-.prose:has(> p:only-child:empty)::before {
+.prose.is-empty::before {
   content: attr(data-placeholder);
   color: var(--text-faint);
   font-style: italic;

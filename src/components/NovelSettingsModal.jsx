@@ -10,6 +10,7 @@ export default function NovelSettingsModal({ onClose }) {
   const fontSize = state.settings.fontSize || 'medium'
   const align = state.settings.align || 'justify'
   const page = state.settings.page || 'paper'
+  const para = state.settings.para || 'book'
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
@@ -78,13 +79,23 @@ export default function NovelSettingsModal({ onClose }) {
           </label>
         </div>
 
-        <label className="field">
-          <span className="field-label">Page style</span>
-          <select value={page} onChange={(e) => setSetting({ page: e.target.value })}>
-            <option value="paper">A4 paper (sheet with margins)</option>
-            <option value="flat">Flat (plain column, no sheet)</option>
-          </select>
-        </label>
+        <div className="field-row">
+          <label className="field">
+            <span className="field-label">Page style</span>
+            <select value={page} onChange={(e) => setSetting({ page: e.target.value })}>
+              <option value="paper">A4 paper (sheet with margins)</option>
+              <option value="flat">Flat (plain column, no sheet)</option>
+            </select>
+          </label>
+
+          <label className="field">
+            <span className="field-label">Paragraphs</span>
+            <select value={para} onChange={(e) => setSetting({ para: e.target.value })}>
+              <option value="book">Book (first-line indent)</option>
+              <option value="block">Block (no indents)</option>
+            </select>
+          </label>
+        </div>
 
         <p className="settings-note">
           Everything is saved automatically in your browser. Use Export (⇩) to download your manuscript.

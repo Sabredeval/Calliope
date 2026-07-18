@@ -15,8 +15,18 @@ const TOOLS = [
    chapter, when kind='chapter'), commits upward */
 const SceneProse = React.memo(function SceneProse({ sceneId, initialContent, onCommit, onFocusScene, kind = 'scene' }) {
   const ref = useRef(null)
+  // Placeholder visibility is tracked with a real class instead of CSS :empty
+  // tricks — browsers sometimes drop typed text NEXT to the empty <p> rather
+  // than inside it, which kept the :empty selector matching forever.
+  const syncEmpty = () => {
+    const el = ref.current
+    if (el) el.classList.toggle('is-empty', !(el.textContent || '').trim())
+  }
   useEffect(() => {
-    if (ref.current) ref.current.innerHTML = initialContent || '<p></p>'
+    if (ref.current) {
+      ref.current.innerHTML = initialContent || '<p></p>'
+      syncEmpty()
+    }
   }, []) // eslint-disable-line
   return (
     <div
@@ -27,8 +37,8 @@ const SceneProse = React.memo(function SceneProse({ sceneId, initialContent, onC
       spellCheck
       data-placeholder="Write this scene…"
       onFocus={() => onFocusScene(sceneId)}
-      onInput={() => onCommit(sceneId, ref.current.innerHTML, ref.current.textContent, kind)}
-      onBlur={() => onCommit(sceneId, ref.current.innerHTML, ref.current.textContent, kind)}
+      onInput={() => { syncEmpty(); onCommit(sceneId, ref.current.innerHTML, ref.current.textContent, kind) }}
+      onBlur={() => { syncEmpty(); onCommit(sceneId, ref.current.innerHTML, ref.current.textContent, kind) }}
     />
   )
 }, (prev, next) => prev.sceneId === next.sceneId) // never re-render for content changes; DOM owns the text
@@ -108,10 +118,6 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
 
   /* dotted-underline highlighting of codex mentions (CSS Custom Highlight API) */
   const highlightOn = state.settings.highlightCodex !== false
-  // "plain prose" mode: hide the per-scene/chapter chrome (status dot, word
-  // counts, add-scene/add-chapter buttons, chapter kicker) entirely instead
-  // of just fading it in on hover — leaves only headings and manuscript text.
-  const plainProse = state.settings.plainProse === true
   const isWordChar = (c) => !!c && /[\p{L}\p{N}]/u.test(c)
 
   /* name/alias → entry lookup, longest first so specific names win */
@@ -313,7 +319,14 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
       <div className="ms-chapter" key={ch.id}>
         <div className="ms-chapter-head">
           <span className="ms-chapter-kicker">
-            Chapter {ci + 1} · {isFlow ? 'flowing text' : `${ch.scenes.length} scene${ch.scenes.length === 1 ? '' : 's'}`} · {chapterWords(ch).toLocaleString()} words
+            Chapter {ci + 1}
+            {isFlow ? (
+              ` · ${chapterWords(ch).toLocaleString()} words`
+            ) : (
+              <>
+                {' · '}{`${ch.scenes.length} scene${ch.scenes.length === 1 ? '' : 's'}`}{' · '}{chapterWords(ch).toLocaleString()} words
+              </>
+            )}
           </span>
           <input
             className="ms-chapter-title"
@@ -438,13 +451,6 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
           >
             <span className="hl-icon">A</span>
           </button>
-          <button
-            className={`tool-btn ${plainProse ? 'toggled' : ''}`}
-            title={plainProse ? 'Show scene info and buttons' : 'Just headings and text — hide scene info and buttons'}
-            onClick={() => dispatch({ type: 'settings/update', patch: { plainProse: !plainProse } })}
-          >
-            <span className="hl-icon">Aa</span>
-          </button>
           <button className="tool-btn" title={focusMode ? 'Exit focus mode (Esc)' : 'Focus mode'} onClick={onToggleFocus}>
             {focusMode ? '⤡' : '⤢'}
           </button>
@@ -454,7 +460,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
         </div>
 
         <div
-          className={`ms-scroll ${plainProse ? 'plain-prose' : ''}`}
+          className={`ms-scroll`}
           ref={scrollRef}
           onScroll={() => { onScroll(); setSelPop(null); setHoverCard(null) }}
           onMouseMove={onProseMouseMove}

@@ -98,7 +98,7 @@ export default function CodexArticle({ entry, onSelectEntry, onDeleted, mentions
               {mentions.map((m) => (
                 <button key={m.locationId} className="appearance-row" onClick={() => onOpenScene(m.locationId)}>
                   <span className="appearance-scene">{m.sceneTitle}</span>
-                  <span className="appearance-chapter">{m.isChapterFlow ? 'chapter (flowing text)' : m.chapterTitle}</span>
+                  <span className="appearance-chapter">{m.chapterTitle || 'chapter'}</span>
                   <span className="mention-count">{m.count} mention{m.count === 1 ? '' : 's'}</span>
                 </button>
               ))}
