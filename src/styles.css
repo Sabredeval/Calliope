@@ -1693,8 +1693,11 @@ textarea { resize: vertical; line-height: 1.5; }
   right: 24px;
   width: auto;
   justify-content: center;
-  padding: var(--page-mark-padding, 5px) 0;
-  transform: translateY(-115%);
+  padding: 5px 0;
+  /* the boundary block carries a real margin-top of --pg-gap ("page line
+     padding" in settings); center the line inside that gap so text sits
+     clear above and below it */
+  transform: translateY(calc(-50% - var(--pg-gap, 48px) / 2));
 }
 .app.marks-lines .ms-tick::before {
   content: '';

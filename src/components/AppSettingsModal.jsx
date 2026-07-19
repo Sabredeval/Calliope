@@ -116,9 +116,9 @@ export default function AppSettingsModal({ onClose }) {
             <input
               type="number"
               min="0"
-              max="40"
+              max="200"
               value={state.settings.pageMarkPadding ?? ''}
-              placeholder="5"
+              placeholder="48"
               onChange={(e) => setSetting({ pageMarkPadding: e.target.value ? Number(e.target.value) : null })}
             />
           </label>

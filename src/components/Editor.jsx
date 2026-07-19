@@ -68,6 +68,7 @@ const SceneProse = React.memo(function SceneProse({ sceneId, initialContent, onC
       contentEditable
       suppressContentEditableWarning
       spellCheck
+      data-prose={sceneId}
       data-placeholder="Write this scene…"
       onFocus={() => onFocusScene(sceneId)}
       onPaste={handleProsePaste}
@@ -315,37 +316,70 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
   const [curPage, setCurPage] = useState(1)
   const ticksRef = useRef([])
   const tickTimer = useRef(null)
+  const gapStyle = useRef(null)
+  const pageMarks = state.settings.pageMarks || 'ticks'
+
+  useEffect(() => {
+    const el = document.createElement('style')
+    document.head.appendChild(el)
+    gapStyle.current = el
+    return () => el.remove()
+  }, [])
 
   const computeTicks = useCallback(() => {
     const doc = scrollRef.current?.querySelector('.ms-doc')
     if (!doc) return
-    const docTop = doc.getBoundingClientRect().top
-    const ticks = []
+
+    // pass 1 — pure word arithmetic: find the block where each page begins.
+    // In "lines" mode those blocks get a real margin-top (via a generated
+    // stylesheet keyed by nth-child, so the saved text is never touched),
+    // physically separating the pages.
+    const rules = []
+    const tickDefs = []
     let words = 0
     let nextPage = 2 // page 1 is the top of the manuscript
     for (const prose of doc.querySelectorAll('.ms-prose')) {
+      const pid = prose.dataset.prose
+      let childIdx = 0
       for (const block of prose.children) {
+        childIdx += 1
         const w = countWords(block.textContent || '')
         if (!w) continue
         const after = words + w
         let stack = 0
+        let crossed = false
         while (after >= (nextPage - 1) * WORDS_PER_PAGE) {
-          ticks.push({ n: nextPage, y: Math.round(block.getBoundingClientRect().top - docTop) + stack * 18 })
+          tickDefs.push({ n: nextPage, el: block, stack })
+          crossed = true
           nextPage += 1
           stack += 1
+        }
+        if (crossed && pid) {
+          rules.push(`.ms-doc [data-prose="${pid}"] > *:nth-child(${childIdx}) { margin-top: var(--pg-gap, 48px) !important; }`)
         }
         words = after
       }
     }
+
+    if (gapStyle.current) {
+      gapStyle.current.textContent = pageMarks === 'lines' ? rules.join('\n') : ''
+    }
+
+    // pass 2 — measure tick positions after the gaps have reflowed
+    const docTop = doc.getBoundingClientRect().top
+    const ticks = tickDefs.map((d) => ({
+      n: d.n,
+      y: Math.round(d.el.getBoundingClientRect().top - docTop) + d.stack * 18,
+    }))
     ticksRef.current = ticks
     setMsTicks((prev) => (JSON.stringify(prev) === JSON.stringify(ticks) ? prev : ticks))
-  }, [])
+  }, [pageMarks])
 
   useEffect(() => {
     clearTimeout(tickTimer.current)
     tickTimer.current = setTimeout(computeTicks, 300)
     return () => clearTimeout(tickTimer.current)
-  }, [computeTicks, state.chapters, state.groups, state.settings.fontSize, state.settings.align, state.settings.para, state.settings.marginX, state.settings.pageSize])
+  }, [computeTicks, state.chapters, state.groups, state.settings.fontSize, state.settings.align, state.settings.para, state.settings.marginX, state.settings.pageSize, state.settings.pageMarkPadding])
 
   useEffect(() => {
     const el = scrollRef.current

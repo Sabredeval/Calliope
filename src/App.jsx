@@ -129,9 +129,11 @@ function Shell({ onLibrary }) {
   const isBookSize = (state.settings.pageSize || 'a4') === 'book'
   const marginX = Math.max(24, Number(state.settings.marginX) || (isBookSize ? 60 : 92))
   const marginY = Math.max(24, Number(state.settings.marginY) || (isBookSize ? 68 : 88))
-  const pageMarkPaddingValue = Number.isFinite(Number(state.settings.pageMarkPadding))
-    ? Math.max(0, Number(state.settings.pageMarkPadding))
-    : 5
+  // "Page line padding" — the breathing room around a page line, applied as
+  // real margin on the boundary paragraph (drives --pg-gap)
+  const pageMarkPaddingValue = Number.isFinite(Number(state.settings.pageMarkPadding)) && state.settings.pageMarkPadding !== null
+    ? Math.min(200, Math.max(0, Number(state.settings.pageMarkPadding)))
+    : 48
   const appearance = [
     `nav-${navStyle}`,
     `fs-${state.settings.fontSize || 'medium'}`,
@@ -159,7 +161,7 @@ function Shell({ onLibrary }) {
       style={{
         '--m-x': `${marginX}px`,
         '--m-y': `${marginY}px`,
-        '--page-mark-padding': `${pageMarkPaddingValue}px`,
+        '--pg-gap': `${pageMarkPaddingValue}px`,
       }}
     >
       {navStyle === 'topbar' && (
