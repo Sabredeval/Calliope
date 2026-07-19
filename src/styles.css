@@ -735,6 +735,20 @@ textarea { resize: vertical; line-height: 1.5; }
   color: var(--text-faint);
 }
 
+/* read-only codex entry inside the mentions panel */
+.panel-entry-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 10px 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.mentions-panel .detail-hero { padding: 14px 16px 12px; }
+.mentions-panel .hero-name { font-size: 20px; margin-top: 6px; }
+.mentions-panel .detail-read { padding: 14px 16px; gap: 12px; }
+.mentions-panel .read-lede { font-size: 14px; }
+.mentions-panel .read-para { font-size: 13.5px; }
+
 .mentions-empty {
   padding: 4px 16px;
   font-size: 12px;

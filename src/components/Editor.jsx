@@ -85,6 +85,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
   const textCache = useRef(new Map())
   const spyLockUntil = useRef(0)
   const [showMentions, setShowMentions] = useState(true)
+  const [panelEntryId, setPanelEntryId] = useState(null) // read-only entry open in the right panel
   const [selWords, setSelWords] = useState(0)
   const [, setTextTick] = useState(0)
   const [selPop, setSelPop] = useState(null) // { x, y, text }
@@ -93,6 +94,21 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
   const selTimer = useRef(null)
   const toastTimer = useRef(null)
   const hoverThrottle = useRef(0)
+  const hoverHide = useRef(null)
+
+  /* hover-card lifetime: never hide instantly — give the mouse time to
+     travel from the underlined word onto the card */
+  const cancelHoverHide = () => {
+    clearTimeout(hoverHide.current)
+    hoverHide.current = null
+  }
+  const scheduleHoverHide = (ms = 350) => {
+    if (hoverHide.current) return
+    hoverHide.current = setTimeout(() => {
+      hoverHide.current = null
+      setHoverCard(null)
+    }, ms)
+  }
 
   // A scene match wins; otherwise activeSceneId may point at a flow-mode
   // chapter (written directly, no scenes) — those act as their own "scene"
@@ -226,7 +242,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
         if (
           offset >= i && offset <= i + s.length &&
           !isWordChar(lower[i - 1]) && !isWordChar(lower[i + s.length])
-        ) return entry
+        ) return { entry, node, start: i, end: i + s.length }
         i = lower.indexOf(s, i + s.length)
       }
     }
@@ -246,10 +262,44 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
       const r = document.caretRangeFromPoint(e.clientX, e.clientY)
       node = r?.startContainer; offset = r?.startOffset
     }
-    const entry = findMentionAt(node, offset)
-    if (entry) {
-      setHoverCard((h) => (h && h.entry.id === entry.id ? h : { entry, x: e.clientX, y: e.clientY }))
+    const hit = findMentionAt(node, offset)
+    if (hit) {
+      cancelHoverHide()
+      setHoverCard((h) => {
+        if (h && h.entry.id === hit.entry.id) return h // same word: keep position stable
+        // anchor the card to the mention text itself, not the cursor
+        const r = document.createRange()
+        r.setStart(hit.node, hit.start)
+        r.setEnd(hit.node, hit.end)
+        const rect = r.getBoundingClientRect()
+        const above = rect.bottom + 280 > window.innerHeight // flip near the bottom edge
+        return { entry: hit.entry, x: rect.left, y: above ? rect.top : rect.bottom, above }
+      })
     } else {
+      scheduleHoverHide()
+    }
+  }
+
+  /* left-click on an underlined mention opens the entry read-only in the
+     right panel — but never when the user is selecting text or double-
+     clicking to select a word */
+  const onProseClick = (e) => {
+    if (!highlightOn || e.detail > 1) return
+    const sel = window.getSelection()
+    if (sel && !sel.isCollapsed) return
+    let node = null, offset = null
+    if (document.caretPositionFromPoint) {
+      const p = document.caretPositionFromPoint(e.clientX, e.clientY)
+      node = p?.offsetNode; offset = p?.offset
+    } else if (document.caretRangeFromPoint) {
+      const r = document.caretRangeFromPoint(e.clientX, e.clientY)
+      node = r?.startContainer; offset = r?.startOffset
+    }
+    const hit = findMentionAt(node, offset)
+    if (hit) {
+      setShowMentions(true)
+      setPanelEntryId(hit.entry.id)
+      cancelHoverHide()
       setHoverCard(null)
     }
   }
@@ -744,9 +794,10 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
         <div
           className={`ms-scroll`}
           ref={scrollRef}
-          onScroll={() => { onScroll(); updateCurPage(); setSelPop(null); setHoverCard(null) }}
+          onScroll={() => { onScroll(); updateCurPage(); setSelPop(null); cancelHoverHide(); setHoverCard(null) }}
           onMouseMove={onProseMouseMove}
-          onMouseLeave={() => setHoverCard(null)}
+          onClick={onProseClick}
+          onMouseLeave={() => scheduleHoverHide(300)}
         >
           <div className="ms-doc">
             {msTicks.map((t) => (
@@ -804,11 +855,13 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
             <div
               className="codex-hovercard"
               style={{
-                left: Math.min(hoverCard.x, window.innerWidth - 340),
-                top: Math.min(hoverCard.y + 20, window.innerHeight - 240),
+                left: Math.max(12, Math.min(hoverCard.x, window.innerWidth - 340)),
+                top: hoverCard.above ? hoverCard.y - 8 : hoverCard.y + 8,
+                transform: hoverCard.above ? 'translateY(-100%)' : undefined,
                 '--hc-accent': e.color,
               }}
-              onMouseLeave={() => setHoverCard(null)}
+              onMouseEnter={cancelHoverHide}
+              onMouseLeave={() => scheduleHoverHide(250)}
             >
               <div className="hc-head">
                 <span className="hc-icon">{t?.icon}</span>
@@ -857,7 +910,78 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
         </footer>
       </div>
 
-      {showMentions && !focusMode && (
+      {showMentions && !focusMode && (() => {
+        const panelEntry = state.codex.find((e) => e.id === panelEntryId)
+        if (panelEntry) {
+          const panelRels = (state.relationships || []).filter(
+            (r) => r.fromId === panelEntry.id || r.toId === panelEntry.id
+          )
+          const nameOf = (id) => state.codex.find((e) => e.id === id)?.name || '?'
+          const typeMeta = CODEX_TYPES.find((t) => t.id === panelEntry.type)
+          return (
+            <aside className="mentions-panel">
+              <div className="panel-entry-head">
+                <button className="mini-btn" onClick={() => setPanelEntryId(null)}>← Back</button>
+                <span className="foot-spacer" />
+                <button
+                  className="mini-btn"
+                  onClick={() => { setPanelEntryId(null); onOpenCodexEntry(panelEntry.id) }}
+                >
+                  Edit in codex →
+                </button>
+              </div>
+
+              <div className="detail-hero" style={{ '--hero': panelEntry.color }}>
+                <span className="hero-type">{typeIcon(panelEntry.type)} {typeMeta?.label}</span>
+                <h2 className="hero-name">{panelEntry.name}</h2>
+                {panelEntry.aliases?.length > 0 && (
+                  <p className="hero-aliases">also known as {panelEntry.aliases.join(' · ')}</p>
+                )}
+              </div>
+
+              <div className="detail-read">
+                {panelEntry.oneLiner && <p className="read-lede">{panelEntry.oneLiner}</p>}
+                {panelEntry.description ? (
+                  panelEntry.description.split(/\n+/).map((p, i) => <p key={i} className="read-para">{p}</p>)
+                ) : (
+                  <p className="read-empty">No description yet.</p>
+                )}
+                {panelEntry.notes && (
+                  <div className="read-notes">
+                    <span className="read-notes-label">Private notes</span>
+                    {panelEntry.notes.split(/\n+/).map((p, i) => <p key={i}>{p}</p>)}
+                  </div>
+                )}
+                {panelEntry.tags?.length > 0 && (
+                  <div className="card-tags">
+                    {panelEntry.tags.map((t) => <span key={t} className="tag-chip small">{t}</span>)}
+                  </div>
+                )}
+                {panelRels.length > 0 && (
+                  <div className="field">
+                    <span className="field-label">Relationships</span>
+                    <div className="rel-list">
+                      {panelRels.map((r) => {
+                        const outgoing = r.fromId === panelEntry.id
+                        const otherId = outgoing ? r.toId : r.fromId
+                        return (
+                          <div key={r.id} className="rel-row">
+                            <span className="rel-dir">{r.directed ? (outgoing ? '→' : '←') : '—'}</span>
+                            <button className="rel-name" onClick={() => setPanelEntryId(otherId)} title="Read entry">
+                              {nameOf(otherId)}
+                            </button>
+                            <span className="rel-label">{r.label}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </aside>
+          )
+        }
+        return (
         <aside className="mentions-panel">
           <div className="mentions-head">
             <span>Codex in this scene</span>
@@ -871,7 +995,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
           ) : (
             <div className="mentions-list">
               {mentions.map(({ entry, count }) => (
-                <button key={entry.id} className="mention-card" onClick={() => onOpenCodexEntry(entry.id)} title="Open in codex">
+                <button key={entry.id} className="mention-card" onClick={() => setPanelEntryId(entry.id)} title="Read here">
                   <span className="mention-swatch" style={{ background: entry.color }} />
                   <span className="mention-body">
                     <span className="mention-name">{typeIcon(entry.type)} {entry.name}</span>
@@ -883,7 +1007,8 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
             </div>
           )}
         </aside>
-      )}
+        )
+      })()}
     </div>
   )
 }
