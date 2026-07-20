@@ -13,6 +13,7 @@ export default function AppSettingsModal({ onClose }) {
   const para = state.settings.para || 'book'
   const layout = state.settings.layout || 'continuous'
   const pageSize = state.settings.pageSize || 'a4'
+  const codexNavigation = state.settings.codexNavigation || 'expanded'
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
@@ -36,6 +37,16 @@ export default function AppSettingsModal({ onClose }) {
             <select value={navStyle} onChange={(e) => setSetting({ navStyle: e.target.value })}>
               <option value="activitybar">Activity bar (left, icons)</option>
               <option value="topbar">Top bar (labels)</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="field-row">
+          <label className="field">
+            <span className="field-label">Codex navigation</span>
+            <select value={codexNavigation} onChange={(e) => setSetting({ codexNavigation: e.target.value })}>
+              <option value="expanded">Expanded sidebar</option>
+              <option value="compact">Compact toolbar</option>
             </select>
           </label>
         </div>

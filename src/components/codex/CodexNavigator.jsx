@@ -4,9 +4,9 @@ import { CODEX_TYPES, useCodexEntries } from '../../store.jsx'
 // Persistent list navigator, grouped by type — the codex equivalent of
 // ManuscriptSidebar. Always visible, so you never lose your place scanning
 // entries the way you can with the card grid once the detail panel opens.
-export default function CodexNavigator({ codex, query, selectedId, onSelect }) {
+export default function CodexNavigator({ codex, query, selectedId, onSelect, typeFilter = 'all' }) {
   const [collapsed, setCollapsed] = useState(() => new Set())
-  const entries = useCodexEntries(codex, 'all', query)
+  const entries = useCodexEntries(codex, typeFilter, query)
 
   const toggle = (typeId) => {
     setCollapsed((prev) => {

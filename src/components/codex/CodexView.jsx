@@ -4,6 +4,7 @@ import RelationGraph from './RelationGraph.jsx'
 import CodexNavigator from './CodexNavigator.jsx'
 import CodexArticle from './CodexArticle.jsx'
 import CodexGallery from './CodexGallery.jsx'
+import CodexNavigation, { CodexCompactNavigation } from './CodexNavigation.jsx'
 import {
   RelationshipsSection, EntryTypeColorFields, EntryOverviewEdit, EntryOverviewRead,
   EntryNotesEdit, EntryNotesRead, typeMetaOf,
@@ -87,8 +88,14 @@ export default function CodexView({ selectedId, onSelect, onOpenScene }) {
   // persisted per-novel so the layout choice survives reload, same mechanism as theme
   const layout = state.settings.codexLayout || 'gallery' // 'gallery' | 'navigator' | 'graph'
   const setLayout = (v) => dispatch({ type: 'settings/update', patch: { codexLayout: v } })
+  const browseLayout = state.settings.codexBrowseLayout || (layout === 'navigator' ? 'navigator' : 'gallery')
+  const setBrowseLayout = (v) => dispatch({ type: 'settings/update', patch: { codexLayout: v, codexBrowseLayout: v } })
+  const section = layout === 'graph' ? 'relations' : 'browse'
+  const setSection = (next) => setLayout(next === 'relations' ? 'graph' : browseLayout)
   const density = state.settings.codexDensity || 'comfortable'
   const setDensity = (v) => dispatch({ type: 'settings/update', patch: { codexDensity: v } })
+  const navigationMode = state.settings.codexNavigation || 'expanded'
+  const setNavigationMode = (v) => dispatch({ type: 'settings/update', patch: { codexNavigation: v } })
 
   const filteredGalleryEntries = useCodexEntries(state.codex, typeFilter, query)
   const mentionsMap = useMemo(() => mentionsByEntry(state.chapters, state.codex), [state.chapters, state.codex])
@@ -128,37 +135,49 @@ export default function CodexView({ selectedId, onSelect, onOpenScene }) {
 
   return (
     <div className="codex-wrap">
-      <div className="codex-main">
-        <div className="codex-toolbar">
-          <div className="mode-toggle">
-            <button className={layout === 'gallery' ? 'active' : ''} onClick={() => setLayout('gallery')} title="Card gallery">▦ Gallery</button>
-            <button className={layout === 'navigator' ? 'active' : ''} onClick={() => setLayout('navigator')} title="List navigator">☰ Navigator</button>
-            <button className={layout === 'graph' ? 'active' : ''} onClick={() => setLayout('graph')} title="Relationship graph">🕸 Relations</button>
-          </div>
-          {layout === 'gallery' && (
-            <div className="codex-filters">
-              <button className={typeFilter === 'all' ? 'active' : ''} onClick={() => setTypeFilter('all')}>
-                All <span className="count">{counts.all}</span>
-              </button>
-              {CODEX_TYPES.map((t) => (
-                <button key={t.id} className={typeFilter === t.id ? 'active' : ''} onClick={() => setTypeFilter(t.id)}>
-                  {t.icon} {t.plural} <span className="count">{counts[t.id]}</span>
-                </button>
-              ))}
-            </div>
+      {navigationMode === 'expanded' && (
+        <CodexNavigation
+          counts={counts}
+          onCollapse={() => setNavigationMode('compact')}
+          relationshipCount={(state.relationships || []).length}
+          section={section}
+          setSection={setSection}
+          typeFilter={typeFilter}
+          setTypeFilter={setTypeFilter}
+        />
+      )}
+      <div className="codex-content">
+        <div className="codex-main">
+          <div className="codex-toolbar">
+          {navigationMode === 'compact' && (
+            <CodexCompactNavigation
+              counts={counts}
+              onExpand={() => setNavigationMode('expanded')}
+              section={section}
+              setSection={setSection}
+              typeFilter={typeFilter}
+              setTypeFilter={setTypeFilter}
+            />
           )}
           {layout === 'graph' && (
             <span className="graph-toolbar-hint">
               {(state.relationships || []).length} relationships between {state.codex.length} entries
             </span>
           )}
-          {layout === 'navigator' && <div className="codex-filters" />}
           <input
             className="codex-search"
             placeholder={layout === 'graph' ? 'Highlight in graph…' : 'Filter codex…'}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          {layout !== 'graph' && (
+            <>
+              <div className="codex-browse-view-toggle" aria-label="Browse layout">
+                <button className={layout === 'gallery' ? 'active' : ''} title="Card grid" aria-pressed={layout === 'gallery'} onClick={() => setBrowseLayout('gallery')}>▦</button>
+                <button className={layout === 'navigator' ? 'active' : ''} title="Reading list" aria-pressed={layout === 'navigator'} onClick={() => setBrowseLayout('navigator')}>☷</button>
+              </div>
+            </>
+          )}
           {layout === 'gallery' && (
             <>
               <select className="codex-sort" value={gallerySort} onChange={(e) => setGallerySort(e.target.value)} aria-label="Sort gallery">
@@ -176,9 +195,9 @@ export default function CodexView({ selectedId, onSelect, onOpenScene }) {
           <button className="primary-btn" onClick={addEntry}>+ New entry</button>
         </div>
 
-        {layout === 'graph' && <RelationGraph selectedId={selectedId} onSelect={onSelect} query={query} />}
+          {layout === 'graph' && <RelationGraph selectedId={selectedId} onSelect={onSelect} query={query} />}
 
-        {layout === 'gallery' && (
+          {layout === 'gallery' && (
           galleryEntries.length === 0 ? (
             <div className="codex-empty">
               <h3>Nothing here yet</h3>
@@ -208,7 +227,7 @@ export default function CodexView({ selectedId, onSelect, onOpenScene }) {
           )
         )}
 
-        {layout === 'navigator' && (
+          {layout === 'navigator' && (
           state.codex.length === 0 ? (
             <div className="codex-empty">
               <h3>Nothing here yet</h3>
@@ -220,7 +239,7 @@ export default function CodexView({ selectedId, onSelect, onOpenScene }) {
             </div>
           ) : (
             <div className="codex-nav-wrap">
-              <CodexNavigator codex={state.codex} query={query} selectedId={selectedId} onSelect={onSelect} />
+              <CodexNavigator codex={state.codex} query={query} selectedId={selectedId} onSelect={onSelect} typeFilter={typeFilter} />
               {selected ? (
                 <CodexArticle
                   key={selected.id}
@@ -235,12 +254,13 @@ export default function CodexView({ selectedId, onSelect, onOpenScene }) {
               )}
             </div>
           )
+          )}
+        </div>
+
+        {layout === 'gallery' && selected && (
+          <CodexDetail key={selected.id} entry={selected} onClose={() => onSelect(null)} onSelectEntry={onSelect} />
         )}
       </div>
-
-      {layout === 'gallery' && selected && (
-        <CodexDetail key={selected.id} entry={selected} onClose={() => onSelect(null)} onSelectEntry={onSelect} />
-      )}
     </div>
   )
 }
