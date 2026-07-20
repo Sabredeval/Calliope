@@ -1483,12 +1483,34 @@ textarea { resize: vertical; line-height: 1.5; }
 }
 
 .ms-scene {
+  position: relative;
   padding: 0;
   margin: 0;
   transition: background 0.25s;
   scroll-margin-top: 70px;
 }
-.ms-scene.flash { background: var(--accent-soft); border-radius: var(--radius); }
+
+/* "you are here" after a jump: instead of tinting the whole section (ugly
+   for long chapters), a thin accent rail appears in the margin beside it,
+   holds for a beat, and fades away */
+.ms-scene.flash::before {
+  content: '';
+  position: absolute;
+  left: -18px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  animation: anchor-rail 1.3s ease-out both;
+}
+@keyframes anchor-rail {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  55% { opacity: 1; }
+  100% { opacity: 0; }
+}
 
 /* scene chrome is invisible until you hover or work in the scene */
 .ms-scene-head {
@@ -1778,6 +1800,10 @@ textarea { resize: vertical; line-height: 1.5; }
   width: auto;
   justify-content: center;
   padding: 5px 0;
+  /* the line is an inert surface: it swallows clicks so they can't fall
+     through onto the text of the page below */
+  pointer-events: auto;
+  cursor: default;
   /* the boundary block carries a real margin-top of --pg-gap ("page line
      padding" in settings); center the line inside that gap so text sits
      clear above and below it */
@@ -1796,6 +1822,21 @@ textarea { resize: vertical; line-height: 1.5; }
   padding: 0 12px;
   color: var(--text-dim);
 }
+
+/* a page that begins mid-paragraph can't get a line+gap (paragraphs don't
+   split) — it shows as a small margin tick at its true position instead */
+.app.marks-lines .ms-tick.ms-tick--mid {
+  left: 10px;
+  right: auto;
+  width: calc(var(--m-x, 92px) - 26px);
+  justify-content: flex-start;
+  padding: 0;
+  transform: none;
+  pointer-events: none;
+}
+.app.marks-lines .ms-tick.ms-tick--mid::before { display: none; }
+.app.marks-lines .ms-tick.ms-tick--mid::after { background: var(--border-soft); }
+.app.marks-lines .ms-tick.ms-tick--mid span { padding: 0; color: var(--text-faint); }
 
 .editor-main { position: relative; }
 

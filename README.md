@@ -1,8 +1,8 @@
 # Calliope
 
-A local-first novel-writing studio: a distraction-light manuscript editor wrapped around a living story bible. Write in one continuous flow, and let the codex, timeline, relationship graph, and inspector keep the world of your book at your fingertips — all in the browser, all your data on your machine.
+A professional novel-writing studio. A distraction-light manuscript editor wrapped around a living story bible. Write in one continuous flow, and let the codex, timeline, relationship graph, and inspector keep the world of your book at your fingertips.
 
-Inspired by novelCrafter and Scrivener; owned by you.
+Inspired by novelCrafter and Scrivener.
 
 ## Running
 
@@ -16,7 +16,7 @@ npm test           # test suite in watch mode (see TESTING.md)
 ## The app, view by view
 
 ### Library
-The home screen. Every novel is a book on the shelf — colored cover, word count, last-edited date. Create, duplicate, delete, and **export/import each novel as a portable `.calliope.json` file** for backups or moving between machines. Each novel lives in its own storage slot, fully isolated.
+The home screen. Every novel is a book on the shelf — colored cover, word count, last-edited date. Create, duplicate, delete, and **export/import each novel as a portable `.calliope.json` file** (in future electron will be used) for backups or moving between machines. Each novel lives in its own storage slot, fully isolated.
 
 ### Write
 The heart of the app: the whole novel as **one continuous scrolling manuscript**. Chapter headings, scene titles, and prose are all editable in place.
@@ -62,11 +62,3 @@ src/
     modals/                search, export, novel details, settings
   test/                    Vitest + Testing Library suite (see TESTING.md)
 ```
-
-## Data & backups
-
-Everything is stored in your browser's localStorage (`calliope.library.v1` plus one `calliope.novel.<id>` slot per novel). **Export your novels to `.calliope.json` regularly** — browser storage is not a backup. Imports restore the complete novel: manuscript, codex, relationships, timeline, highlights, and settings.
-
-## Roadmap ideas
-
-Print/PDF export with true pagination (the browser's print engine does line-level page breaks natively), scene snapshot history in the Inspector, maps (image-backed, codex-pinned — see plan discussion), file-system autosave backups, and deployment as an installable PWA.

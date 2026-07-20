@@ -27,7 +27,10 @@ const toParagraphs = (text) => {
       .map((p) => p.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim())
       .filter(Boolean)
   }
-  return t.split(/\n/).map((p) => p.trim()).filter(Boolean)
+  return t
+    .split(/\n/)
+    .map((p) => p.trim())
+    .filter((p) => p && !PAGE_JUNK.test(p))
 }
 
 const handleProsePaste = (e) => {
@@ -68,6 +71,26 @@ const rangeFromTextOffsets = (root, start, end) => {
     pos = next
   }
   return null
+}
+
+/* caretPositionFromPoint snaps to the NEAREST text — clicks in margins and
+   page gaps resolve to characters that aren't actually under the cursor.
+   This verifies the resolved character really sits at the pointer. */
+const caretNearPoint = (node, offset, x, y) => {
+  if (!node || node.nodeType !== 3) return false
+  try {
+    const len = node.length
+    if (!len) return false
+    const i = Math.min(Math.max(0, offset), len - 1)
+    const r = document.createRange()
+    r.setStart(node, i)
+    r.setEnd(node, i + 1)
+    const rect = r.getBoundingClientRect()
+    if (!rect || (!rect.width && !rect.height)) return false
+    return y >= rect.top - 4 && y <= rect.bottom + 4 && x >= rect.left - 14 && x <= rect.right + 14
+  } catch {
+    return false
+  }
 }
 
 /* plain-text offset of a (node, offset) caret position within root */
@@ -328,6 +351,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
 
   const onProseMouseMove = (e) => {
     if (!highlightOn) return
+    if (e.target.closest?.('.ms-tick')) { scheduleHoverHide(); return }
     const now = Date.now()
     if (now - hoverThrottle.current < 80) return
     hoverThrottle.current = now
@@ -339,6 +363,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
       const r = document.caretRangeFromPoint(e.clientX, e.clientY)
       node = r?.startContainer; offset = r?.startOffset
     }
+    if (!caretNearPoint(node, offset, e.clientX, e.clientY)) { scheduleHoverHide(); return }
     const hit = findMentionAt(node, offset)
     if (hit) {
       cancelHoverHide()
@@ -362,6 +387,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
      clicking to select a word */
   const onProseClick = (e) => {
     if (!highlightOn || e.detail > 1) return
+    if (e.target.closest?.('.ms-tick')) return // page lines are inert
     const sel = window.getSelection()
     if (sel && !sel.isCollapsed) return
     let node = null, offset = null
@@ -372,6 +398,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
       const r = document.caretRangeFromPoint(e.clientX, e.clientY)
       node = r?.startContainer; offset = r?.startOffset
     }
+    if (!caretNearPoint(node, offset, e.clientX, e.clientY)) return
     // a click on a user highlight opens its comment; mentions come second
     const hl = findHighlightAt(node, offset)
     if (hl) {
@@ -472,25 +499,40 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     // physically separating the pages.
     const rules = []
     const tickDefs = []
+    const chaptersWithContent = new Set() // to suppress lines at chapter starts
     let words = 0
     let nextPage = 2 // page 1 is the top of the manuscript
     for (const prose of doc.querySelectorAll('.ms-prose')) {
       const pid = prose.dataset.prose
+      const chapterEl = prose.closest('.ms-chapter')
       let childIdx = 0
       for (const block of prose.children) {
         childIdx += 1
         const w = countWords(block.textContent || '')
         if (!w) continue
+        // book convention: a chapter always starts on a fresh page — round
+        // the word count up to the next page boundary at each chapter start.
+        // Its heading acts as the page break, so no line/gap is drawn there.
+        const atChapterStart = chapterEl && !chaptersWithContent.has(chapterEl)
+        if (chapterEl) chaptersWithContent.add(chapterEl)
+        if (atChapterStart && words > 0) {
+          words = Math.ceil(words / WORDS_PER_PAGE) * WORDS_PER_PAGE
+          nextPage = words / WORDS_PER_PAGE + 1
+        }
         const after = words + w
         let stack = 0
         let crossed = false
         while (after >= (nextPage - 1) * WORDS_PER_PAGE) {
-          tickDefs.push({ n: nextPage, el: block, stack })
+          // a long paragraph can contain several page starts: the first gets
+          // the block-top line+gap, the rest sit proportionally where the
+          // page really begins inside the block (as small mid-block ticks)
+          const frac = stack === 0 ? 0 : Math.min(0.96, ((nextPage - 1) * WORDS_PER_PAGE - words) / w)
+          tickDefs.push({ n: nextPage, el: block, frac, mid: stack > 0, hidden: atChapterStart && stack === 0 })
           crossed = true
           nextPage += 1
           stack += 1
         }
-        if (crossed && pid) {
+        if (crossed && pid && !atChapterStart) {
           rules.push(`.ms-doc [data-prose="${pid}"] > *:nth-child(${childIdx}) { margin-top: var(--pg-gap, 48px) !important; }`)
         }
         words = after
@@ -503,10 +545,15 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
 
     // pass 2 — measure tick positions after the gaps have reflowed
     const docTop = doc.getBoundingClientRect().top
-    const ticks = tickDefs.map((d) => ({
-      n: d.n,
-      y: Math.round(d.el.getBoundingClientRect().top - docTop) + d.stack * 18,
-    }))
+    const ticks = tickDefs.map((d) => {
+      const r = d.el.getBoundingClientRect()
+      return {
+        n: d.n,
+        y: Math.round(r.top - docTop + d.frac * r.height),
+        mid: d.mid || false,
+        hidden: d.hidden || false,
+      }
+    })
     ticksRef.current = ticks
     setMsTicks((prev) => (JSON.stringify(prev) === JSON.stringify(ticks) ? prev : ticks))
   }, [pageMarks])
@@ -528,7 +575,11 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     return () => ro.disconnect()
   }, [computeTicks])
 
-  const totalMsPages = Math.max(1, Math.ceil(novelWords(state.chapters) / WORDS_PER_PAGE))
+  // each chapter starts a fresh page, so totals are per-chapter ceilings
+  const totalMsPages = Math.max(
+    1,
+    state.chapters.reduce((n, ch) => n + Math.ceil(chapterWords(ch) / WORDS_PER_PAGE), 0)
+  )
 
   const updateCurPage = () => {
     const cont = scrollRef.current
@@ -923,8 +974,8 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
           onMouseLeave={() => scheduleHoverHide(300)}
         >
           <div className="ms-doc">
-            {msTicks.map((t) => (
-              <div className="ms-tick" key={t.n} style={{ top: t.y }} aria-hidden="true">
+            {msTicks.filter((t) => !t.hidden).map((t) => (
+              <div className={`ms-tick ${t.mid ? 'ms-tick--mid' : ''}`} key={t.n} style={{ top: t.y }} aria-hidden="true">
                 <span>{t.n}</span>
               </div>
             ))}
