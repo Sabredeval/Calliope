@@ -39,6 +39,7 @@ const highlightIndex = (highlight, text) => {
 export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, onOpenCodexEntry, focusMode, onToggleFocus }) {
   const { state, dispatch } = useStore()
   const scrollRef = useRef(null)
+  const progressRef = useRef(null)
   const sectionRefs = useRef(new Map())
   const textCache = useRef(new Map())
   const spyLockUntil = useRef(0)
@@ -356,6 +357,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
 
   /* scrollspy: active scene follows the viewport */
   const onScroll = () => {
+    updateReadingProgress()
     if (Date.now() < spyLockUntil.current) return
     const cont = scrollRef.current
     if (!cont) return
@@ -368,6 +370,24 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     }
     if (best && best !== activeSceneId) onActiveSceneChange(best)
   }
+
+  const updateReadingProgress = useCallback(() => {
+    const scroller = scrollRef.current
+    const fill = progressRef.current
+    if (!scroller || !fill) return
+    const scrollableHeight = scroller.scrollHeight - scroller.clientHeight
+    const progress = scrollableHeight > 0 ? Math.max(0, Math.min(1, scroller.scrollTop / scrollableHeight)) : 0
+    fill.style.transform = `scaleX(${progress})`
+  }, [])
+
+  useEffect(() => {
+    const frame = requestFrame(updateReadingProgress)
+    window.addEventListener('resize', updateReadingProgress)
+    return () => {
+      cancelFrame(frame)
+      window.removeEventListener('resize', updateReadingProgress)
+    }
+  }, [state.chapters, updateReadingProgress])
 
   const registerSection = (id) => (el) => {
     if (el) sectionRefs.current.set(id, el)
@@ -696,6 +716,10 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
         />
 
         <HighlightPopover dispatch={dispatch} highlights={highlights} hlPop={hlPop} setHlPop={setHlPop} />
+
+        <div className="ms-reading-progress" aria-hidden="true">
+          <span ref={progressRef} />
+        </div>
 
         <div
           className={`ms-scroll`}
