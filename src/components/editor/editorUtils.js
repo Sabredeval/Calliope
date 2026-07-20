@@ -71,6 +71,17 @@ export const caretNearPoint = (node, offset, x, y) => {
 }
 
 export const textOffsetOf = (root, node, offset) => {
+  if (!root || !node || (root !== node && !root.contains(node))) return -1
+  if (node.nodeType === 1) {
+    try {
+      const prefix = document.createRange()
+      prefix.selectNodeContents(root)
+      prefix.setEnd(node, offset)
+      return (prefix.cloneContents().textContent || '').length
+    } catch {
+      return -1
+    }
+  }
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
   let current
   let position = 0

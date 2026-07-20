@@ -28,11 +28,19 @@ export function HighlightPopover({ dispatch, highlights, hlPop, setHlPop }) {
   )
 }
 
-export function CodexSelectionPopover({ existingEntry, onOpenCodexEntry, quickAdd, selPop, setSelPop }) {
+export function CodexSelectionPopover({ addHighlight, existingEntry, onOpenCodexEntry, quickAdd, selPop, setSelPop }) {
   if (!selPop) return null
   return (
     <div className="sel-popover" style={{ left: selPop.x, top: selPop.y }} onMouseDown={(event) => event.preventDefault()}>
-      {existingEntry ? (
+      {selPop.mode === 'highlight' ? (
+        <button className="sel-highlight" onClick={addHighlight}>
+          <span className="sel-highlight-mark" aria-hidden="true" />
+          <span className="sel-highlight-copy">
+            <strong>Highlight selection</strong>
+            <small>{selPop.wordCount.toLocaleString()} {selPop.wordCount === 1 ? 'word' : 'words'}</small>
+          </span>
+        </button>
+      ) : existingEntry ? (
         <button className="sel-open" onClick={() => { setSelPop(null); onOpenCodexEntry(existingEntry.id) }}>
           <span className="mention-swatch" style={{ background: existingEntry.color }} />
           {CODEX_TYPES.find((type) => type.id === existingEntry.type)?.icon} {existingEntry.name} — open in codex

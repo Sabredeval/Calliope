@@ -2093,6 +2093,27 @@ textarea { resize: vertical; line-height: 1.5; }
 }
 .sel-open:hover { background: var(--bg-hover); color: var(--accent); }
 
+.sel-highlight {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 6px;
+  border-radius: 7px;
+  text-align: left;
+}
+.sel-highlight:hover { background: var(--bg-hover); }
+.sel-highlight-mark {
+  width: 4px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  background: #f5d76e;
+  box-shadow: 0 0 0 1px color-mix(in srgb, #8d7420 35%, transparent);
+}
+.sel-highlight-copy { display: flex; flex-direction: column; gap: 1px; }
+.sel-highlight-copy strong { color: var(--text); font-size: 12px; line-height: 1.2; }
+.sel-highlight-copy small { color: var(--text-faint); font-size: 10px; line-height: 1.2; }
+
 .sel-toast {
   position: fixed;
   bottom: 52px;

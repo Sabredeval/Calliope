@@ -18,6 +18,24 @@ const cancelFrame = typeof window !== 'undefined' && window.cancelAnimationFrame
   ? window.cancelAnimationFrame.bind(window)
   : clearTimeout
 
+const CODEX_SELECTION_MAX_CHARS = 60
+const CODEX_SELECTION_MAX_WORDS = 6
+const HIGHLIGHT_SELECTION_MAX_CHARS = 2000
+
+const proseOfNode = (node) => {
+  const element = node?.nodeType === 1 ? node : node?.parentElement
+  return element?.closest?.('.ms-prose') || null
+}
+
+const highlightIndex = (highlight, text) => {
+  if (
+    Number.isInteger(highlight.start) &&
+    highlight.start >= 0 &&
+    text.slice(highlight.start, highlight.start + highlight.quote.length) === highlight.quote
+  ) return highlight.start
+  return text.indexOf(highlight.quote)
+}
+
 export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, onOpenCodexEntry, focusMode, onToggleFocus }) {
   const { state, dispatch } = useStore()
   const scrollRef = useRef(null)
@@ -76,24 +94,32 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     exec('formatBlock', current?.toLowerCase() === tag ? '<p>' : `<${tag}>`)
   }
 
-  /* selection word count */
-  /* selection: word count + quick "add to codex" popover */
+  /* selection: word count + contextual Codex/highlight action */
   useEffect(() => {
     const maybeShowPopover = () => {
       const sel = window.getSelection()
       if (!sel || sel.isCollapsed) { setSelPop(null); return }
       const raw = sel.toString()
-      const text = raw.trim().replace(/\s+/g, ' ')
-      if (!text || text.length > 60 || text.split(' ').length > 6 || /\n/.test(raw.trim())) {
-        setSelPop(null)
-        return
-      }
-      const node = sel.anchorNode
-      const el = node?.nodeType === 1 ? node : node?.parentElement
-      if (!el?.closest('.ms-prose')) { setSelPop(null); return }
-      const rect = sel.getRangeAt(0).getBoundingClientRect()
+      const trimmed = raw.trim()
+      if (!trimmed) { setSelPop(null); return }
+
+      const range = sel.getRangeAt(0)
+      const startProse = proseOfNode(range.startContainer)
+      const endProse = proseOfNode(range.endContainer)
+      if (!startProse || startProse !== endProse) { setSelPop(null); return }
+
+      const wordCount = countWords(trimmed)
+      const text = trimmed.replace(/\s+/g, ' ')
+      const isCodexName = text.length <= CODEX_SELECTION_MAX_CHARS &&
+        wordCount <= CODEX_SELECTION_MAX_WORDS && !/[\r\n]/.test(trimmed)
+      const isHighlight = !isCodexName && trimmed.length <= HIGHLIGHT_SELECTION_MAX_CHARS
+      if (!isCodexName && !isHighlight) { setSelPop(null); return }
+
+      const rects = [...range.getClientRects()].filter((rect) => rect.width || rect.height)
+      const rect = isHighlight ? (rects[rects.length - 1] || range.getBoundingClientRect()) : range.getBoundingClientRect()
       if (!rect.width && !rect.height) { setSelPop(null); return }
-      setSelPop({ x: rect.left + rect.width / 2, y: rect.top, text })
+      const x = Math.max(140, Math.min(rect.left + rect.width / 2, window.innerWidth - 140))
+      setSelPop({ x, y: rect.top, text, wordCount, mode: isCodexName ? 'codex' : 'highlight' })
     }
     const onSel = () => {
       const sel = window.getSelection()
@@ -182,7 +208,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
       const sec = sectionRefs.current.get(h.sceneId)
       const prose = sec?.querySelector('.ms-prose')
       if (!prose || !h.quote) continue
-      const idx = (prose.textContent || '').indexOf(h.quote)
+      const idx = highlightIndex(h, prose.textContent || '')
       if (idx === -1) continue
       const r = rangeFromTextOffsets(prose, idx, idx + h.quote.length)
       if (!r) continue
@@ -297,7 +323,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
   }
 
   const normName = (t) => t.toLowerCase()
-  const existingEntry = selPop
+  const existingEntry = selPop?.mode === 'codex'
     ? state.codex.find(
         (e) =>
           normName(e.name) === normName(selPop.text) ||
@@ -306,7 +332,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     : null
 
   const quickAdd = (type) => {
-    if (!selPop) return
+    if (!selPop || selPop.mode !== 'codex') return
     const id = uid()
     dispatch({ type: 'codex/add', id, entryType: type, name: selPop.text })
     setSelPop(null)
@@ -538,7 +564,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     const sec = sectionRefs.current.get(h.sceneId)
     const prose = sec?.querySelector('.ms-prose')
     if (!prose || !h.quote) return null
-    const idx = (prose.textContent || '').indexOf(h.quote)
+    const idx = highlightIndex(h, prose.textContent || '')
     if (idx === -1) return null
     return rangeFromTextOffsets(prose, idx, idx + h.quote.length)
   }
@@ -552,16 +578,29 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
   const addHighlight = () => {
     const sel = window.getSelection()
     if (!sel || sel.isCollapsed) return
-    const el = sel.anchorNode?.nodeType === 1 ? sel.anchorNode : sel.anchorNode?.parentElement
-    const prose = el?.closest('.ms-prose')
-    if (!prose) return
-    const quote = sel.toString().trim()
-    if (!quote || quote.length > 500) return
-    const rect = sel.getRangeAt(0).getBoundingClientRect()
+    const range = sel.getRangeAt(0)
+    const prose = proseOfNode(range.startContainer)
+    if (!prose || prose !== proseOfNode(range.endContainer)) return
+
+    const proseText = prose.textContent || ''
+    let start = textOffsetOf(prose, range.startContainer, range.startOffset)
+    let end = textOffsetOf(prose, range.endContainer, range.endOffset)
+    if (start < 0 || end < start) return
+
+    let quote = proseText.slice(start, end)
+    const leadingWhitespace = quote.match(/^\s*/)?.[0].length || 0
+    const trailingWhitespace = quote.match(/\s*$/)?.[0].length || 0
+    start += leadingWhitespace
+    end -= trailingWhitespace
+    quote = proseText.slice(start, end)
+    if (!quote || quote.length > HIGHLIGHT_SELECTION_MAX_CHARS) return
+
+    const rects = [...range.getClientRects()].filter((selectionRect) => selectionRect.width || selectionRect.height)
+    const rect = rects[rects.length - 1] || range.getBoundingClientRect()
     const id = uid()
     dispatch({
       type: 'hl/add',
-      hl: { id, sceneId: prose.dataset.prose, quote, comment: '', color: HL_COLORS[0], createdAt: Date.now() },
+      hl: { id, sceneId: prose.dataset.prose, quote, start, comment: '', color: HL_COLORS[0], createdAt: Date.now() },
     })
     sel.removeAllRanges()
     setSelPop(null)
@@ -577,7 +616,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     const text = prose.textContent || ''
     for (const h of highlights) {
       if (h.sceneId !== prose.dataset.prose || !h.quote) continue
-      const idx = text.indexOf(h.quote)
+      const idx = highlightIndex(h, text)
       if (idx !== -1 && off >= idx && off <= idx + h.quote.length) return h
     }
     return null
@@ -688,7 +727,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
           </div>
         </div>
 
-        <CodexSelectionPopover existingEntry={existingEntry} onOpenCodexEntry={onOpenCodexEntry} quickAdd={quickAdd} selPop={selPop} setSelPop={setSelPop} />
+        <CodexSelectionPopover addHighlight={addHighlight} existingEntry={existingEntry} onOpenCodexEntry={onOpenCodexEntry} quickAdd={quickAdd} selPop={selPop} setSelPop={setSelPop} />
         <CodexHoverCard
           cancelHoverHide={cancelHoverHide}
           hoverCard={hoverCard}
