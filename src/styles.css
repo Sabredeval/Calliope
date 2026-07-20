@@ -1700,12 +1700,21 @@ textarea { resize: vertical; line-height: 1.5; }
 .ms-group + .ms-group,
 .ms-group + .ms-chapter,
 .ms-chapter + .ms-group { margin-top: 130px; }
-.ms-group-head { text-align: center; margin-bottom: 20px; }
+.ms-group-head,
+.ms-chapter-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+}
+.ms-group-head { margin-bottom: 20px; }
 .ms-group-head + .ms-chapter,
 .ms-group-head + .ms-group { margin-top: 0; }
 .ms-group-title {
   display: block;
-  width: 100%;
+  flex: 0 1 390px;
+  min-width: 160px;
   background: transparent;
   border: none;
   padding: 6px 0;
@@ -1721,9 +1730,10 @@ textarea { resize: vertical; line-height: 1.5; }
 .ms-chapter { padding: 0; }
 .ms-chapter + .ms-chapter { margin-top: 110px; }
 
-.ms-chapter-head { text-align: center; margin-bottom: 34px; }
+.ms-chapter-head { flex-wrap: wrap; margin-bottom: 34px; }
 .ms-chapter-kicker {
   display: block;
+  flex-basis: 100%;
   font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
@@ -1736,7 +1746,8 @@ textarea { resize: vertical; line-height: 1.5; }
 .ms-chapter-head:focus-within .ms-chapter-kicker { opacity: 1; }
 .ms-chapter-title {
   display: block;
-  width: 100%;
+  flex: 0 1 420px;
+  min-width: 160px;
   background: transparent;
   border: none;
   padding: 6px 0 0;
@@ -1746,6 +1757,47 @@ textarea { resize: vertical; line-height: 1.5; }
   color: var(--text);
   text-align: center;
 }
+
+/* quiet engraved flourishes give Arc/Part and chapter headings a bookish
+   frame while leaving the title inputs entirely functional */
+.ms-heading-engraving {
+  position: relative;
+  min-width: 42px;
+  max-width: 170px;
+  flex: 1 1 54px;
+  height: 18px;
+  color: var(--text-faint);
+  opacity: 0.58;
+  transition: opacity 0.18s;
+}
+.ms-heading-engraving svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.ms-heading-engraving:last-child svg { transform: scaleX(-1); transform-origin: center; }
+.engraving-stroke {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.engraving-fine { stroke-width: 0.8; opacity: 0.78; }
+.engraving-leaf { fill: currentColor; opacity: 0.62; }
+.engraving-dot { fill: currentColor; }
+.engraving-jewel {
+  fill: var(--paper);
+  stroke: currentColor;
+  stroke-width: 1.05;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.engraving-terminal { stroke-width: 0.85; }
+.ms-heading-engraving--group {
+  height: 24px;
+  color: var(--accent);
+  opacity: 0.7;
+}
+.ms-group-head:focus-within .ms-heading-engraving,
+.ms-chapter-head:focus-within .ms-heading-engraving { opacity: 0.9; }
 
 .ms-divider {
   text-align: center;
@@ -1871,6 +1923,7 @@ textarea { resize: vertical; line-height: 1.5; }
 .app.focus-mode .ms-doc { border: none; box-shadow: none; background: transparent; }
 .app.focus-mode .ms-scene-head, .app.focus-mode .ms-summary { opacity: 0.4; }
 .app.focus-mode .ms-scene-head:hover { opacity: 1; }
+.app.focus-mode .ms-heading-engraving { opacity: 0.28; }
 
 /* plain prose: scene/chapter chrome no longer surfaces on hover at all —
    only chapter/scene headings and the manuscript text remain visible */
