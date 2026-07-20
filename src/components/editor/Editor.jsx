@@ -1,143 +1,15 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import {
-  useStore, uid, plainText, countWords, findMentions, novelWords, chapterWords, sceneWords,
-  buildManuscriptTree, SCENE_STATUSES, CODEX_TYPES, CODEX_COLORS, SCENES_ENABLED,
+  useStore, uid, plainText, countWords, findMentions, novelWords, chapterWords,
+  buildManuscriptTree, CODEX_TYPES, CODEX_COLORS, SCENE_STATUSES,
 } from '../../store.jsx'
+import { HL_COLORS, caretNearPoint, rangeFromTextOffsets, textOffsetOf } from './editorUtils.js'
+import EditorInspector from './EditorInspector.jsx'
+import { CodexHoverCard, CodexSelectionPopover, CodexToast, HighlightPopover } from './EditorOverlays.jsx'
+import EditorToolbar from './EditorToolbar.jsx'
+import ManuscriptDocument from './ManuscriptDocument.jsx'
 
-const TOOLS = [
-  { cmd: 'bold', icon: 'B', title: 'Bold (Ctrl+B)', style: { fontWeight: 700 } },
-  { cmd: 'italic', icon: 'I', title: 'Italic (Ctrl+I)', style: { fontStyle: 'italic' } },
-  { cmd: 'underline', icon: 'U', title: 'Underline (Ctrl+U)', style: { textDecoration: 'underline' } },
-  { cmd: 'strikeThrough', icon: 'S', title: 'Strikethrough', style: { textDecoration: 'line-through' } },
-]
-
-/* ---- clean paste ------------------------------------------------------
-   Default contentEditable paste imports the source's full HTML — styled
-   spans, layout divs, fonts — which pollutes the manuscript and breaks
-   measurements. We take plain text only, but rebuild paragraph structure:
-   blank-line-separated text (books, Gutenberg) keeps its paragraphs with
-   hard-wrapped lines rejoined; otherwise each line becomes a paragraph. */
-const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-const toParagraphs = (text) => {
-  const t = text.replace(/\r/g, '')
-  if (/\n[ \t]*\n/.test(t)) {
-    return t
-      .split(/\n[ \t]*\n+/)
-      .map((p) => p.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim())
-      .filter(Boolean)
-  }
-  return t
-    .split(/\n/)
-    .map((p) => p.trim())
-    .filter((p) => p && !PAGE_JUNK.test(p))
-}
-
-const handleProsePaste = (e) => {
-  e.preventDefault()
-  const text = e.clipboardData?.getData('text/plain')
-  if (!text) return
-  const paras = toParagraphs(text)
-  if (!paras.length) return
-  if (paras.length === 1) {
-    // single paragraph: insert inline so it doesn't split the current one
-    document.execCommand('insertText', false, paras[0])
-  } else {
-    document.execCommand('insertHTML', false, paras.map((p) => `<p>${escapeHtml(p)}</p>`).join(''))
-  }
-}
-
-/* ---- highlights: marker colors + text-offset helpers ------------------ */
-export const HL_COLORS = ['#f5d76e', '#7ed491', '#f2a1c0', '#8ab8f5']
-
-/* map [start, end) plain-text offsets inside an element to a DOM Range
-   (spans across inline formatting nodes correctly) */
-const rangeFromTextOffsets = (root, start, end) => {
-  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  const r = document.createRange()
-  let n
-  let pos = 0
-  let started = false
-  while ((n = w.nextNode())) {
-    const next = pos + n.length
-    if (!started && start < next) {
-      r.setStart(n, Math.max(0, start - pos))
-      started = true
-    }
-    if (started && end <= next) {
-      r.setEnd(n, end - pos)
-      return r
-    }
-    pos = next
-  }
-  return null
-}
-
-/* caretPositionFromPoint snaps to the NEAREST text — clicks in margins and
-   page gaps resolve to characters that aren't actually under the cursor.
-   This verifies the resolved character really sits at the pointer. */
-const caretNearPoint = (node, offset, x, y) => {
-  if (!node || node.nodeType !== 3) return false
-  try {
-    const len = node.length
-    if (!len) return false
-    const i = Math.min(Math.max(0, offset), len - 1)
-    const r = document.createRange()
-    r.setStart(node, i)
-    r.setEnd(node, i + 1)
-    const rect = r.getBoundingClientRect()
-    if (!rect || (!rect.width && !rect.height)) return false
-    return y >= rect.top - 4 && y <= rect.bottom + 4 && x >= rect.left - 14 && x <= rect.right + 14
-  } catch {
-    return false
-  }
-}
-
-/* plain-text offset of a (node, offset) caret position within root */
-const textOffsetOf = (root, node, offset) => {
-  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  let n
-  let pos = 0
-  while ((n = w.nextNode())) {
-    if (n === node) return pos + offset
-    pos += n.length
-  }
-  return -1
-}
-
-/* Uncontrolled contentEditable — mounted once per scene (or per flow-mode
-   chapter, when kind='chapter'), commits upward */
-const SceneProse = React.memo(function SceneProse({ sceneId, initialContent, onCommit, onFocusScene, kind = 'scene' }) {
-  const ref = useRef(null)
-  // Placeholder visibility is tracked with a real class instead of CSS :empty
-  // tricks — browsers sometimes drop typed text NEXT to the empty <p> rather
-  // than inside it, which kept the :empty selector matching forever.
-  const syncEmpty = () => {
-    const el = ref.current
-    if (el) el.classList.toggle('is-empty', !(el.textContent || '').trim())
-  }
-  useEffect(() => {
-    if (ref.current) {
-      ref.current.innerHTML = initialContent || '<p></p>'
-      syncEmpty()
-    }
-  }, []) // eslint-disable-line
-  return (
-    <div
-      ref={ref}
-      className="prose ms-prose"
-      contentEditable
-      suppressContentEditableWarning
-      spellCheck
-      data-prose={sceneId}
-      data-placeholder="Write this scene…"
-      onFocus={() => onFocusScene(sceneId)}
-      onPaste={handleProsePaste}
-      onInput={() => { syncEmpty(); onCommit(sceneId, ref.current.innerHTML, ref.current.textContent, kind) }}
-      onBlur={() => { syncEmpty(); onCommit(sceneId, ref.current.innerHTML, ref.current.textContent, kind) }}
-    />
-  )
-}, (prev, next) => prev.sceneId === next.sceneId) // never re-render for content changes; DOM owns the text
+export { HL_COLORS } from './editorUtils.js'
 
 export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, onOpenCodexEntry, focusMode, onToggleFocus }) {
   const { state, dispatch } = useStore()
@@ -704,14 +576,6 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     return 'missing scene'
   }
 
-  const MarkerIcon = () => (
-    <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true">
-      <path d="m12.2 3.2 4.6 4.6-7.6 7.6H4.6v-4.6z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-      <path d="m10.4 5 4.6 4.6" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M3 17.5h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  )
-
   const activeId = active ? (active.kind === 'scene' ? active.scene.id : active.chapter.id) : null
   const activeContent = active ? (active.kind === 'scene' ? active.scene.content : active.chapter.content) : ''
   const activeTitle = active ? (active.kind === 'scene' ? active.scene.title : active.chapter.title) : ''
@@ -723,7 +587,6 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
 
   const totalWords = novelWords(state.chapters)
   const activeWords = countWords(activeText)
-  const typeIcon = (t) => CODEX_TYPES.find((c) => c.id === t)?.icon || '📄'
   const statusOf = (s) => SCENE_STATUSES.find((x) => x.id === s.status)
 
   const tree = useMemo(() => buildManuscriptTree(state.chapters, state.groups), [state.chapters, state.groups])
@@ -745,225 +608,24 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     walk(tree)
     return m
   }, [tree])
-  const chapterSiblings = (groupId) => state.chapters.filter((c) => (c.groupId ?? null) === (groupId ?? null))
-
-  // Walks the Act/Part/.../Chapter tree in display order. Groups render as a
-  // heading wrapping their children; a chapter with scenes renders each scene
-  // as before, while a flow-mode chapter (no scenes) renders one continuous
-  // prose block bound directly to its own content.
-  const renderNode = (node, depth) => {
-    if (node.type === 'group') {
-      return (
-        <div className="ms-group" key={node.group.id} data-depth={depth}>
-          <div className="ms-group-head">
-            <input
-              className="ms-group-title"
-              value={node.group.title}
-              placeholder="Act title"
-              onChange={(e) => dispatch({ type: 'group/update', id: node.group.id, patch: { title: e.target.value } })}
-            />
-          </div>
-          {node.children.map((child) => renderNode(child, depth + 1))}
-        </div>
-      )
-    }
-
-    const ch = node.chapter
-    const siblings = chapterSiblings(ch.groupId)
-    const ci = siblings.findIndex((c) => c.id === ch.id)
-    const isFlow = ch.scenes.length === 0
-    const flowActive = isFlow && ch.id === activeSceneId
-
-    return (
-      <div className="ms-chapter" key={ch.id}>
-        <div className="ms-chapter-head">
-          <span className="ms-chapter-kicker">
-            Chapter {ci + 1}
-            {isFlow ? (
-              ` · ${chapterWords(ch).toLocaleString()} words`
-            ) : (
-              <>
-                {' · '}{`${ch.scenes.length} scene${ch.scenes.length === 1 ? '' : 's'}`}{' · '}{chapterWords(ch).toLocaleString()} words
-              </>
-            )}
-          </span>
-          <input
-            className="ms-chapter-title"
-            value={ch.title}
-            placeholder="Chapter title"
-            onChange={(e) => dispatch({ type: 'chapter/update', id: ch.id, patch: { title: e.target.value } })}
-          />
-        </div>
-
-        {isFlow ? (
-          <section
-            className={`ms-scene ${flowActive ? 'active' : ''}`}
-            ref={registerSection(ch.id)}
-            onClick={() => { if (!flowActive) onActiveSceneChange(ch.id) }}
-          >
-            <SceneProse
-              sceneId={ch.id}
-              initialContent={ch.content}
-              onCommit={commit}
-              onFocusScene={onActiveSceneChange}
-              kind="chapter"
-            />
-          </section>
-        ) : (
-          ch.scenes.map((sc, si) => {
-            const isActive = sc.id === activeSceneId
-            return (
-              <React.Fragment key={sc.id}>
-                {si > 0 && <div className="ms-divider" aria-hidden="true">⁂</div>}
-                <section
-                  className={`ms-scene ${isActive ? 'active' : ''}`}
-                  ref={registerSection(sc.id)}
-                  onClick={() => { if (!isActive) onActiveSceneChange(sc.id) }}
-                >
-                  <div className="ms-scene-head">
-                    <span className="status-dot" style={{ background: statusOf(sc)?.color }} title={statusOf(sc)?.label} />
-                    <input
-                      className="ms-scene-title"
-                      value={sc.title}
-                      placeholder="Scene title"
-                      onFocus={() => onActiveSceneChange(sc.id)}
-                      onChange={(e) => dispatch({ type: 'scene/update', id: sc.id, patch: { title: e.target.value } })}
-                    />
-                    <span className="ms-scene-words">{sceneWords(sc).toLocaleString()} w</span>
-                  </div>
-                  <SceneProse
-                    sceneId={sc.id}
-                    initialContent={sc.content}
-                    onCommit={commit}
-                    onFocusScene={onActiveSceneChange}
-                  />
-                </section>
-              </React.Fragment>
-            )
-          })
-        )}
-
-        {SCENES_ENABLED && (
-          <button
-            className="ms-add-scene"
-            onClick={() => {
-              if (isFlow) {
-                const newId = uid()
-                dispatch({ type: 'chapter/splitToScenes', id: ch.id, newSceneId: newId })
-                onActiveSceneChange(newId)
-              } else {
-                dispatch({ type: 'scene/add', chapterId: ch.id })
-              }
-            }}
-          >
-            {isFlow ? `Split "${ch.title || 'this chapter'}" into scenes` : `+ Add scene to ${ch.title || `Chapter ${ci + 1}`}`}
-          </button>
-        )}
-      </div>
-    )
-  }
-
   return (
     <div className="editor-wrap">
       <div className="editor-main">
-        <div className="toolbar ms-toolbar">
-          {TOOLS.map((t) => (
-            <button key={t.cmd} className="tool-btn" title={t.title} style={t.style}
-              onMouseDown={(e) => e.preventDefault()} onClick={() => exec(t.cmd)}>
-              {t.icon}
-            </button>
-          ))}
-          <span className="tool-sep" />
-          <button className="tool-btn" title="Heading" onMouseDown={(e) => e.preventDefault()} onClick={() => formatBlock('h2')}>H</button>
-          <button className="tool-btn" title="Blockquote" onMouseDown={(e) => e.preventDefault()} onClick={() => formatBlock('blockquote')}>❝</button>
-          <button className="tool-btn" title="Scene break (horizontal rule)" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('insertHorizontalRule')}>—</button>
-          <button className="tool-btn" title="New chapter" onMouseDown={(e) => e.preventDefault()} onClick={() => dispatch({ type: 'chapter/add' })}>+</button>
-          <span className="tool-sep" />
-          <button className="tool-btn" title="Undo (Ctrl+Z)" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('undo')}>↩</button>
-          <button className="tool-btn" title="Redo (Ctrl+Y)" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('redo')}>↪</button>
-          <button className="tool-btn" title="Clear formatting" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('removeFormat')}>⌫</button>
+        <EditorToolbar
+          active={active}
+          activeTitle={activeTitle}
+          addHighlight={addHighlight}
+          dispatch={dispatch}
+          focusMode={focusMode}
+          formatBlock={formatBlock}
+          highlightOn={highlightOn}
+          onToggleFocus={onToggleFocus}
+          onToggleMentions={() => setShowMentions((visible) => !visible)}
+          showMentions={showMentions}
+          statusOf={statusOf}
+        />
 
-          <span className="toolbar-spacer" />
-
-          {active && (
-            <>
-              <span className="ms-here" title="Where you are">
-                {active.kind === 'scene' && <span className="status-dot" style={{ background: statusOf(active.scene)?.color }} />}
-                {activeTitle}
-              </span>
-              {active.kind === 'scene' && (
-                <select
-                  className="status-select"
-                  value={active.scene.status}
-                  onChange={(e) => dispatch({ type: 'scene/update', id: active.scene.id, patch: { status: e.target.value } })}
-                  title="Status of the current scene"
-                >
-                  {SCENE_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                </select>
-              )}
-            </>
-          )}
-          <button className="tool-btn" title="Highlight selection & add comment" onMouseDown={(e) => e.preventDefault()} onClick={addHighlight}>
-            <MarkerIcon />
-          </button>
-          <button
-            className={`tool-btn ${highlightOn ? 'toggled' : ''}`}
-            title={highlightOn ? 'Hide codex mention underlines' : 'Underline codex mentions in the text'}
-            onClick={() => dispatch({ type: 'settings/update', patch: { highlightCodex: !highlightOn } })}
-          >
-            <span className="hl-icon">A</span>
-          </button>
-          <button className="tool-btn" title={focusMode ? 'Exit focus mode (Esc)' : 'Focus mode'} onClick={onToggleFocus}>
-            {focusMode ? '⤡' : '⤢'}
-          </button>
-          <button className="tool-btn" title={showMentions ? 'Hide codex panel' : 'Show codex panel'} onClick={() => setShowMentions((v) => !v)}>
-            📚
-          </button>
-        </div>
-
-        {hlPop && (() => {
-          const h = highlights.find((x) => x.id === hlPop.id)
-          if (!h) return null
-          return (
-            <div
-              className="hl-pop"
-              style={{
-                left: Math.max(12, Math.min(hlPop.x, window.innerWidth - 320)),
-                top: hlPop.above ? hlPop.y - 8 : hlPop.y + 8,
-                transform: hlPop.above ? 'translateY(-100%)' : undefined,
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <div className="hl-pop-head">
-                {HL_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    className={`color-dot ${h.color === c ? 'selected' : ''}`}
-                    style={{ background: c }}
-                    onClick={() => dispatch({ type: 'hl/update', id: h.id, patch: { color: c } })}
-                  />
-                ))}
-                <span className="foot-spacer" />
-                <button
-                  className="mini-icon danger"
-                  title="Delete highlight"
-                  onClick={() => { dispatch({ type: 'hl/delete', id: h.id }); setHlPop(null) }}
-                >
-                  ✕
-                </button>
-                <button className="mini-icon" title="Close" onClick={() => setHlPop(null)}>—</button>
-              </div>
-              <textarea
-                className="hl-comment"
-                rows={3}
-                autoFocus
-                placeholder="Comment…"
-                value={h.comment || ''}
-                onChange={(e) => dispatch({ type: 'hl/update', id: h.id, patch: { comment: e.target.value } })}
-              />
-            </div>
-          )
-        })()}
+        <HighlightPopover dispatch={dispatch} highlights={highlights} hlPop={hlPop} setHlPop={setHlPop} />
 
         <div
           className={`ms-scroll`}
@@ -979,88 +641,32 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
                 <span>{t.n}</span>
               </div>
             ))}
-            {state.chapters.length === 0 && (
-              <div className="ms-doc-empty">
-                <h2>{state.novel.title || 'Your novel'}</h2>
-                <p>The manuscript is empty. Add a chapter from the panel on the left, and start writing.</p>
-              </div>
-            )}
-
-            {tree.map((node) => renderNode(node, 0))}
-
-            {state.chapters.length > 0 && (
-              <button className="ms-add-chapter" onClick={() => dispatch({ type: 'chapter/add' })}>
-                + New chapter
-              </button>
-            )}
+            <ManuscriptDocument
+              activeSceneId={activeSceneId}
+              chapters={state.chapters}
+              commit={commit}
+              dispatch={dispatch}
+              novelTitle={state.novel.title}
+              onActiveSceneChange={onActiveSceneChange}
+              registerSection={registerSection}
+              statusOf={statusOf}
+              tree={tree}
+              uid={uid}
+            />
             <div className="ms-doc-tail" />
           </div>
         </div>
 
-        {selPop && (
-          <div
-            className="sel-popover"
-            style={{ left: selPop.x, top: selPop.y }}
-            onMouseDown={(e) => e.preventDefault()}
-          >
-            {existingEntry ? (
-              <button className="sel-open" onClick={() => { setSelPop(null); onOpenCodexEntry(existingEntry.id) }}>
-                <span className="mention-swatch" style={{ background: existingEntry.color }} />
-                {CODEX_TYPES.find((t) => t.id === existingEntry.type)?.icon} {existingEntry.name} — open in codex
-              </button>
-            ) : (
-              <>
-                <span className="sel-label">Add “{selPop.text}” as</span>
-                {CODEX_TYPES.map((t) => (
-                  <button key={t.id} className="sel-type" title={t.label} onClick={() => quickAdd(t.id)}>
-                    {t.icon}
-                  </button>
-                ))}
-              </>
-            )}
-          </div>
-        )}
-
-        {hoverCard && (() => {
-          const e = hoverCard.entry
-          const t = CODEX_TYPES.find((c) => c.id === e.type)
-          const relCount = (state.relationships || []).filter((r) => r.fromId === e.id || r.toId === e.id).length
-          return (
-            <div
-              className="codex-hovercard"
-              style={{
-                left: Math.max(12, Math.min(hoverCard.x, window.innerWidth - 340)),
-                top: hoverCard.above ? hoverCard.y - 8 : hoverCard.y + 8,
-                transform: hoverCard.above ? 'translateY(-100%)' : undefined,
-                '--hc-accent': e.color,
-              }}
-              onMouseEnter={cancelHoverHide}
-              onMouseLeave={() => scheduleHoverHide(250)}
-            >
-              <div className="hc-head">
-                <span className="hc-icon">{t?.icon}</span>
-                <span className="hc-name">{e.name}</span>
-                <span className="hc-type">{t?.label}</span>
-              </div>
-              {e.aliases?.length > 0 && <p className="hc-aliases">also: {e.aliases.join(', ')}</p>}
-              {e.oneLiner && <p className="hc-lede">{e.oneLiner}</p>}
-              {e.description && <p className="hc-desc">{e.description}</p>}
-              <div className="hc-foot">
-                {relCount > 0 && <span className="hc-rels">{relCount} relationship{relCount === 1 ? '' : 's'}</span>}
-                <span className="foot-spacer" />
-                <button onClick={() => { setHoverCard(null); onOpenCodexEntry(e.id) }}>Open in codex →</button>
-              </div>
-            </div>
-          )
-        })()}
-
-        {toast && (
-          <div className="sel-toast">
-            <span>{toast.icon} “{toast.name}” added to codex</span>
-            <button onClick={() => { setToast(null); onOpenCodexEntry(toast.id) }}>Edit entry →</button>
-            <button className="toast-x" onClick={() => setToast(null)}>✕</button>
-          </div>
-        )}
+        <CodexSelectionPopover existingEntry={existingEntry} onOpenCodexEntry={onOpenCodexEntry} quickAdd={quickAdd} selPop={selPop} setSelPop={setSelPop} />
+        <CodexHoverCard
+          cancelHoverHide={cancelHoverHide}
+          hoverCard={hoverCard}
+          onOpenCodexEntry={onOpenCodexEntry}
+          scheduleHoverHide={scheduleHoverHide}
+          setHoverCard={setHoverCard}
+          state={state}
+        />
+        <CodexToast onOpenCodexEntry={onOpenCodexEntry} setToast={setToast} toast={toast} />
 
         <footer className="editor-foot ms-foot">
           {active && (
@@ -1084,210 +690,26 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
         </footer>
       </div>
 
-      {showMentions && !focusMode && (() => {
-        const panelEntry = state.codex.find((e) => e.id === panelEntryId)
-
-        const inspTabs = (
-          <div className="insp-tabs">
-            <button className={inspectorTab === 'codex' ? 'active' : ''} onClick={() => setInspectorTab('codex')}>Codex</button>
-            <button className={inspectorTab === 'highlights' ? 'active' : ''} onClick={() => setInspectorTab('highlights')}>Highlights</button>
-            <button className={inspectorTab === 'scene' ? 'active' : ''} onClick={() => setInspectorTab('scene')}>Scene</button>
-          </div>
-        )
-
-        if (inspectorTab === 'highlights') {
-          const sorted = [...highlights].sort(
-            (a, b) =>
-              (sceneOrder.get(a.sceneId) ?? 999) - (sceneOrder.get(b.sceneId) ?? 999) ||
-              (a.createdAt || 0) - (b.createdAt || 0)
-          )
-          return (
-            <aside className="mentions-panel inspector">
-              {inspTabs}
-              {sorted.length === 0 ? (
-                <p className="mentions-empty">
-                  No highlights yet. Select a passage in the manuscript and press the marker button in the toolbar — then click the highlighted text to comment.
-                </p>
-              ) : (
-                <div className="insp-hl-list">
-                  {sorted.map((h) => (
-                    <div className="bm-row" key={h.id}>
-                      <span className="hl-swatch" style={{ background: h.color }} />
-                      <button className="bm-jump" onClick={() => jumpToHighlight(h)} title={h.quote}>
-                        <span className="bm-name">“{h.quote.length > 40 ? `${h.quote.slice(0, 40)}…` : h.quote}”</span>
-                        {h.comment && <span className="bm-comment">{h.comment}</span>}
-                        <span className="bm-context">{sceneTitleOf(h.sceneId)}</span>
-                      </button>
-                      <button
-                        className="mini-icon danger"
-                        title="Delete highlight"
-                        onClick={() => dispatch({ type: 'hl/delete', id: h.id })}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </aside>
-          )
-        }
-
-        if (inspectorTab === 'scene') {
-          return (
-            <aside className="mentions-panel inspector">
-              {inspTabs}
-              {!active ? (
-                <p className="mentions-empty">Click into a scene to inspect it.</p>
-              ) : (
-                <div className="insp-scene">
-                  <label className="field">
-                    <span className="field-label">{active.kind === 'scene' ? 'Scene title' : 'Chapter title'}</span>
-                    <input
-                      value={activeTitle}
-                      onChange={(e) =>
-                        dispatch({
-                          type: active.kind === 'scene' ? 'scene/update' : 'chapter/update',
-                          id: activeId,
-                          patch: { title: e.target.value },
-                        })
-                      }
-                    />
-                  </label>
-
-                  {active.kind === 'scene' && (
-                    <>
-                      <label className="field">
-                        <span className="field-label">Status</span>
-                        <select
-                          value={active.scene.status}
-                          onChange={(e) => dispatch({ type: 'scene/update', id: activeId, patch: { status: e.target.value } })}
-                        >
-                          {SCENE_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                        </select>
-                      </label>
-
-                      <label className="field">
-                        <span className="field-label">Summary</span>
-                        <textarea
-                          rows={5}
-                          value={active.scene.summary || ''}
-                          placeholder="What happens here? Used in the outline and export."
-                          onChange={(e) => dispatch({ type: 'scene/update', id: activeId, patch: { summary: e.target.value } })}
-                        />
-                      </label>
-                    </>
-                  )}
-
-                  <p className="insp-meta">
-                    {activeWords.toLocaleString()} words
-                    {active.kind === 'scene' ? <> · in <strong>{active.chapter.title}</strong></> : ' · written as flowing chapter'}
-                  </p>
-                </div>
-              )}
-            </aside>
-          )
-        }
-
-        if (panelEntry) {
-          const panelRels = (state.relationships || []).filter(
-            (r) => r.fromId === panelEntry.id || r.toId === panelEntry.id
-          )
-          const nameOf = (id) => state.codex.find((e) => e.id === id)?.name || '?'
-          const typeMeta = CODEX_TYPES.find((t) => t.id === panelEntry.type)
-          return (
-            <aside className="mentions-panel inspector">
-              {inspTabs}
-              <div className="panel-entry-head">
-                <button className="mini-btn" onClick={() => setPanelEntryId(null)}>← Back</button>
-                <span className="foot-spacer" />
-                <button
-                  className="mini-btn"
-                  onClick={() => { setPanelEntryId(null); onOpenCodexEntry(panelEntry.id) }}
-                >
-                  Edit in codex →
-                </button>
-              </div>
-
-              <div className="detail-hero" style={{ '--hero': panelEntry.color }}>
-                <span className="hero-type">{typeIcon(panelEntry.type)} {typeMeta?.label}</span>
-                <h2 className="hero-name">{panelEntry.name}</h2>
-                {panelEntry.aliases?.length > 0 && (
-                  <p className="hero-aliases">also known as {panelEntry.aliases.join(' · ')}</p>
-                )}
-              </div>
-
-              <div className="detail-read">
-                {panelEntry.oneLiner && <p className="read-lede">{panelEntry.oneLiner}</p>}
-                {panelEntry.description ? (
-                  panelEntry.description.split(/\n+/).map((p, i) => <p key={i} className="read-para">{p}</p>)
-                ) : (
-                  <p className="read-empty">No description yet.</p>
-                )}
-                {panelEntry.notes && (
-                  <div className="read-notes">
-                    <span className="read-notes-label">Private notes</span>
-                    {panelEntry.notes.split(/\n+/).map((p, i) => <p key={i}>{p}</p>)}
-                  </div>
-                )}
-                {panelEntry.tags?.length > 0 && (
-                  <div className="card-tags">
-                    {panelEntry.tags.map((t) => <span key={t} className="tag-chip small">{t}</span>)}
-                  </div>
-                )}
-                {panelRels.length > 0 && (
-                  <div className="field">
-                    <span className="field-label">Relationships</span>
-                    <div className="rel-list">
-                      {panelRels.map((r) => {
-                        const outgoing = r.fromId === panelEntry.id
-                        const otherId = outgoing ? r.toId : r.fromId
-                        return (
-                          <div key={r.id} className="rel-row">
-                            <span className="rel-dir">{r.directed ? (outgoing ? '→' : '←') : '—'}</span>
-                            <button className="rel-name" onClick={() => setPanelEntryId(otherId)} title="Read entry">
-                              {nameOf(otherId)}
-                            </button>
-                            <span className="rel-label">{r.label}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </aside>
-          )
-        }
-        return (
-        <aside className="mentions-panel inspector">
-          {inspTabs}
-          <div className="mentions-head">
-            <span>In this scene</span>
-          </div>
-          {!active ? (
-            <p className="mentions-empty">Click into a scene to see which codex entries appear in it.</p>
-          ) : mentions.length === 0 ? (
-            <p className="mentions-empty">
-              No codex entries detected in “{activeTitle}” yet. As you write names from your codex (or their aliases), they'll appear here.
-            </p>
-          ) : (
-            <div className="mentions-list">
-              {mentions.map(({ entry, count }) => (
-                <button key={entry.id} className="mention-card" onClick={() => setPanelEntryId(entry.id)} title="Read here">
-                  <span className="mention-swatch" style={{ background: entry.color }} />
-                  <span className="mention-body">
-                    <span className="mention-name">{typeIcon(entry.type)} {entry.name}</span>
-                    {entry.oneLiner && <span className="mention-desc">{entry.oneLiner}</span>}
-                  </span>
-                  <span className="mention-count">×{count}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </aside>
-        )
-      })()}
+      {showMentions && !focusMode && (
+        <EditorInspector
+          active={active}
+          activeId={activeId}
+          activeTitle={activeTitle}
+          activeWords={activeWords}
+          dispatch={dispatch}
+          highlights={highlights}
+          inspectorTab={inspectorTab}
+          jumpToHighlight={jumpToHighlight}
+          mentions={mentions}
+          onOpenCodexEntry={onOpenCodexEntry}
+          panelEntryId={panelEntryId}
+          sceneOrder={sceneOrder}
+          sceneTitleOf={sceneTitleOf}
+          setInspectorTab={setInspectorTab}
+          setPanelEntryId={setPanelEntryId}
+          state={state}
+        />
+      )}
     </div>
   )
 }
