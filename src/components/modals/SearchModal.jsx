@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
-import { useStore, plainText, flatScenes, CODEX_TYPES } from '../store.jsx'
+import { useStore, plainText, flatScenes, CODEX_TYPES } from '../../store.jsx'
 
 function snippet(text, q, radius = 60) {
   const i = text.toLowerCase().indexOf(q.toLowerCase())

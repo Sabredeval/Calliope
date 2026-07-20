@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { useStore, uid, sceneWords, chapterWords, groupWords, SCENE_STATUSES, SCENES_ENABLED } from '../store.jsx'
+import { useStore, uid, sceneWords, chapterWords, groupWords, SCENE_STATUSES, SCENES_ENABLED } from '../../store.jsx'
 
 // Small monochrome line-icons, inspired by Scrivener's binder (folder =
 // container, page = document) but kept muted/single-tone to match the rest

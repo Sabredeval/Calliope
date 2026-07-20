@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import {
   loadLibrary, saveLibrary, createNovel, duplicateNovel, deleteNovel,
   normalizeNovelData, novelKey, CODEX_COLORS,
-} from '../store.jsx'
+} from '../../store.jsx'
 
 const spineColor = (title) => {
   let h = 0

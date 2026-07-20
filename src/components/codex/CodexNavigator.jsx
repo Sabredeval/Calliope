@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { CODEX_TYPES, useCodexEntries } from '../store.jsx'
+import { CODEX_TYPES, useCodexEntries } from '../../store.jsx'
 
 // Persistent list navigator, grouped by type — the codex equivalent of
 // ManuscriptSidebar. Always visible, so you never lose your place scanning

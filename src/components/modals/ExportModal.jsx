@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useStore, plainText, novelWords, buildManuscriptTree, CODEX_TYPES } from '../store.jsx'
+import { useStore, plainText, novelWords, buildManuscriptTree, CODEX_TYPES } from '../../store.jsx'
 
 function htmlToMarkdown(html) {
   const div = document.createElement('div')

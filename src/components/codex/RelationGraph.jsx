@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react'
-import { useStore, uid, CODEX_TYPES } from '../store.jsx'
+import { useStore, uid, CODEX_TYPES } from '../../store.jsx'
 
 const SPRING_LEN = 170
 const SPRING_K = 0.025

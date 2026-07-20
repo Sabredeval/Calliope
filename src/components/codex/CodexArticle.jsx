@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useStore } from '../store.jsx'
+import { useStore } from '../../store.jsx'
 import {
   RelationshipsSection, EntryTypeColorFields, EntryOverviewEdit, EntryOverviewRead,
   EntryNotesEdit, EntryNotesRead, typeMetaOf,

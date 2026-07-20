@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react'
-import { useStore, CODEX_TYPES, uid, useCodexEntries, mentionsByEntry } from '../store.jsx'
+import { useStore, CODEX_TYPES, uid, useCodexEntries, mentionsByEntry } from '../../store.jsx'
 import RelationGraph from './RelationGraph.jsx'
 import CodexNavigator from './CodexNavigator.jsx'
 import CodexArticle from './CodexArticle.jsx'

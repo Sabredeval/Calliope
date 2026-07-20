@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import { StoreProvider, useStore, novelWords, loadLibrary, saveLibrary, buildManuscriptTree } from './store.jsx'
-import LibraryView from './components/LibraryView.jsx'
-import ManuscriptSidebar from './components/ManuscriptSidebar.jsx'
-import Editor from './components/Editor.jsx'
-import CodexView from './components/CodexView.jsx'
-import TimelineView from './components/TimelineView.jsx'
-import SearchModal from './components/SearchModal.jsx'
-import ExportModal from './components/ExportModal.jsx'
-import NovelSettingsModal from './components/NovelSettingsModal.jsx'
-import AppSettingsModal from './components/AppSettingsModal.jsx'
+import LibraryView from './components/library/LibraryView.jsx'
+import ManuscriptSidebar from './components/editor/ManuscriptSidebar.jsx'
+import Editor from './components/editor/Editor.jsx'
+import CodexView from './components/codex/CodexView.jsx'
+import TimelineView from './components/timeline/TimelineView.jsx'
+import SearchModal from './components/modals/SearchModal.jsx'
+import ExportModal from './components/modals/ExportModal.jsx'
+import NovelSettingsModal from './components/modals/NovelSettingsModal.jsx'
+import AppSettingsModal from './components/modals/AppSettingsModal.jsx'
 
 /* VS Code-style activity bar icons — monochrome, stroke-based */
 const S = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }

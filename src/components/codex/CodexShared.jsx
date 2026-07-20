@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useStore, CODEX_TYPES, CODEX_COLORS, uid } from '../store.jsx'
+import { useStore, CODEX_TYPES, CODEX_COLORS, uid } from '../../store.jsx'
 
 /* Building blocks shared by both codex layouts — the card-grid + narrow
    detail panel (CodexDetail, in CodexView.jsx) and the list navigator +

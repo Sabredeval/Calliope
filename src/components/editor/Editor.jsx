@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import {
   useStore, uid, plainText, countWords, findMentions, novelWords, chapterWords, sceneWords,
   buildManuscriptTree, SCENE_STATUSES, CODEX_TYPES, CODEX_COLORS, SCENES_ENABLED,
-} from '../store.jsx'
+} from '../../store.jsx'
 
 const TOOLS = [
   { cmd: 'bold', icon: 'B', title: 'Bold (Ctrl+B)', style: { fontWeight: 700 } },
@@ -124,6 +124,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
   const spyLockUntil = useRef(0)
   const [showMentions, setShowMentions] = useState(true)
   const [panelEntryId, setPanelEntryId] = useState(null) // read-only entry open in the right panel
+  const [inspectorTab, setInspectorTab] = useState('codex') // 'codex' | 'highlights' | 'scene'
   const [selWords, setSelWords] = useState(0)
   const [, setTextTick] = useState(0)
   const [selPop, setSelPop] = useState(null) // { x, y, text }
@@ -382,6 +383,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     const hit = findMentionAt(node, offset)
     if (hit) {
       setShowMentions(true)
+      setInspectorTab('codex')
       setPanelEntryId(hit.entry.id)
       cancelHoverHide()
       setHoverCard(null)
@@ -561,16 +563,8 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
   }
 
   /* ---- highlights: marked passages with comments, anchored to the text -- */
-  const [hlOpen, setHlOpen] = useState(false) // list dropdown
-  const [hlPop, setHlPop] = useState(null)    // { id, x, y, above } — comment editor
+  const [hlPop, setHlPop] = useState(null) // { id, x, y, above } — comment editor
   const highlights = state.highlights || []
-
-  useEffect(() => {
-    if (!hlOpen) return
-    const close = () => setHlOpen(false)
-    window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
-  }, [hlOpen])
 
   /* the comment popover dismisses on outside click, Escape, and scroll —
      clicks inside it are shielded by its own stopPropagation */
@@ -636,7 +630,6 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
   }
 
   const jumpToHighlight = (h) => {
-    setHlOpen(false)
     const sec = sectionRefs.current.get(h.sceneId)
     const cont = scrollRef.current
     if (!sec || !cont) return
@@ -683,6 +676,24 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
   const statusOf = (s) => SCENE_STATUSES.find((x) => x.id === s.status)
 
   const tree = useMemo(() => buildManuscriptTree(state.chapters, state.groups), [state.chapters, state.groups])
+
+  /* manuscript-order index for every writable location (scene or flow chapter) */
+  const sceneOrder = useMemo(() => {
+    const m = new Map()
+    let i = 0
+    const walk = (nodes) => {
+      for (const n of nodes) {
+        if (n.type === 'chapter') {
+          if (n.chapter.scenes.length) for (const s of n.chapter.scenes) m.set(s.id, i++)
+          else m.set(n.chapter.id, i++)
+        } else {
+          walk(n.children)
+        }
+      }
+    }
+    walk(tree)
+    return m
+  }, [tree])
   const chapterSiblings = (groupId) => state.chapters.filter((c) => (c.groupId ?? null) === (groupId ?? null))
 
   // Walks the Act/Part/.../Chapter tree in display order. Groups render as a
@@ -845,13 +856,6 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
             <MarkerIcon />
           </button>
           <button
-            className={`tool-btn ${hlOpen ? 'toggled' : ''}`}
-            title="Highlights"
-            onClick={(e) => { e.stopPropagation(); setHlOpen((v) => !v) }}
-          >
-            <span className="hl-list-icon"><MarkerIcon /></span>
-          </button>
-          <button
             className={`tool-btn ${highlightOn ? 'toggled' : ''}`}
             title={highlightOn ? 'Hide codex mention underlines' : 'Underline codex mentions in the text'}
             onClick={() => dispatch({ type: 'settings/update', patch: { highlightCodex: !highlightOn } })}
@@ -865,36 +869,6 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
             📚
           </button>
         </div>
-
-        {hlOpen && (
-          <div className="bm-menu" onClick={(e) => e.stopPropagation()}>
-            <div className="bm-menu-head">Highlights</div>
-            {highlights.length === 0 ? (
-              <p className="bm-empty">
-                No highlights yet. Select a passage and press the marker button — the text gets a colored highlight you can comment on, and it follows the text through edits.
-              </p>
-            ) : (
-              highlights.map((h) => (
-                <div className="bm-row" key={h.id}>
-                  <span className="hl-swatch" style={{ background: h.color }} />
-                  <button className="bm-jump" onClick={() => jumpToHighlight(h)} title={h.quote}>
-                    <span className="bm-name">“{h.quote.length > 44 ? `${h.quote.slice(0, 44)}…` : h.quote}”</span>
-                    <span className="bm-context">
-                      {h.comment ? h.comment : sceneTitleOf(h.sceneId)}
-                    </span>
-                  </button>
-                  <button
-                    className="mini-icon danger"
-                    title="Delete highlight"
-                    onClick={() => dispatch({ type: 'hl/delete', id: h.id })}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        )}
 
         {hlPop && (() => {
           const h = highlights.find((x) => x.id === hlPop.id)
@@ -1061,6 +1035,109 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
 
       {showMentions && !focusMode && (() => {
         const panelEntry = state.codex.find((e) => e.id === panelEntryId)
+
+        const inspTabs = (
+          <div className="insp-tabs">
+            <button className={inspectorTab === 'codex' ? 'active' : ''} onClick={() => setInspectorTab('codex')}>Codex</button>
+            <button className={inspectorTab === 'highlights' ? 'active' : ''} onClick={() => setInspectorTab('highlights')}>Highlights</button>
+            <button className={inspectorTab === 'scene' ? 'active' : ''} onClick={() => setInspectorTab('scene')}>Scene</button>
+          </div>
+        )
+
+        if (inspectorTab === 'highlights') {
+          const sorted = [...highlights].sort(
+            (a, b) =>
+              (sceneOrder.get(a.sceneId) ?? 999) - (sceneOrder.get(b.sceneId) ?? 999) ||
+              (a.createdAt || 0) - (b.createdAt || 0)
+          )
+          return (
+            <aside className="mentions-panel inspector">
+              {inspTabs}
+              {sorted.length === 0 ? (
+                <p className="mentions-empty">
+                  No highlights yet. Select a passage in the manuscript and press the marker button in the toolbar — then click the highlighted text to comment.
+                </p>
+              ) : (
+                <div className="insp-hl-list">
+                  {sorted.map((h) => (
+                    <div className="bm-row" key={h.id}>
+                      <span className="hl-swatch" style={{ background: h.color }} />
+                      <button className="bm-jump" onClick={() => jumpToHighlight(h)} title={h.quote}>
+                        <span className="bm-name">“{h.quote.length > 40 ? `${h.quote.slice(0, 40)}…` : h.quote}”</span>
+                        {h.comment && <span className="bm-comment">{h.comment}</span>}
+                        <span className="bm-context">{sceneTitleOf(h.sceneId)}</span>
+                      </button>
+                      <button
+                        className="mini-icon danger"
+                        title="Delete highlight"
+                        onClick={() => dispatch({ type: 'hl/delete', id: h.id })}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </aside>
+          )
+        }
+
+        if (inspectorTab === 'scene') {
+          return (
+            <aside className="mentions-panel inspector">
+              {inspTabs}
+              {!active ? (
+                <p className="mentions-empty">Click into a scene to inspect it.</p>
+              ) : (
+                <div className="insp-scene">
+                  <label className="field">
+                    <span className="field-label">{active.kind === 'scene' ? 'Scene title' : 'Chapter title'}</span>
+                    <input
+                      value={activeTitle}
+                      onChange={(e) =>
+                        dispatch({
+                          type: active.kind === 'scene' ? 'scene/update' : 'chapter/update',
+                          id: activeId,
+                          patch: { title: e.target.value },
+                        })
+                      }
+                    />
+                  </label>
+
+                  {active.kind === 'scene' && (
+                    <>
+                      <label className="field">
+                        <span className="field-label">Status</span>
+                        <select
+                          value={active.scene.status}
+                          onChange={(e) => dispatch({ type: 'scene/update', id: activeId, patch: { status: e.target.value } })}
+                        >
+                          {SCENE_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                        </select>
+                      </label>
+
+                      <label className="field">
+                        <span className="field-label">Summary</span>
+                        <textarea
+                          rows={5}
+                          value={active.scene.summary || ''}
+                          placeholder="What happens here? Used in the outline and export."
+                          onChange={(e) => dispatch({ type: 'scene/update', id: activeId, patch: { summary: e.target.value } })}
+                        />
+                      </label>
+                    </>
+                  )}
+
+                  <p className="insp-meta">
+                    {activeWords.toLocaleString()} words
+                    {active.kind === 'scene' ? <> · in <strong>{active.chapter.title}</strong></> : ' · written as flowing chapter'}
+                  </p>
+                </div>
+              )}
+            </aside>
+          )
+        }
+
         if (panelEntry) {
           const panelRels = (state.relationships || []).filter(
             (r) => r.fromId === panelEntry.id || r.toId === panelEntry.id
@@ -1068,7 +1145,8 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
           const nameOf = (id) => state.codex.find((e) => e.id === id)?.name || '?'
           const typeMeta = CODEX_TYPES.find((t) => t.id === panelEntry.type)
           return (
-            <aside className="mentions-panel">
+            <aside className="mentions-panel inspector">
+              {inspTabs}
               <div className="panel-entry-head">
                 <button className="mini-btn" onClick={() => setPanelEntryId(null)}>← Back</button>
                 <span className="foot-spacer" />
@@ -1131,9 +1209,10 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
           )
         }
         return (
-        <aside className="mentions-panel">
+        <aside className="mentions-panel inspector">
+          {inspTabs}
           <div className="mentions-head">
-            <span>Codex in this scene</span>
+            <span>In this scene</span>
           </div>
           {!active ? (
             <p className="mentions-empty">Click into a scene to see which codex entries appear in it.</p>

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react'
-import { useStore, uid, CODEX_COLORS, CODEX_TYPES } from '../store.jsx'
+import { useStore, uid, CODEX_COLORS, CODEX_TYPES } from '../../store.jsx'
 
 const GUTTER = 140      // px reserved for track labels
 const AXIS_H = 40

@@ -1,5 +1,5 @@
 import React from 'react'
-import { useStore } from '../store.jsx'
+import { useStore } from '../../store.jsx'
 
 export default function NovelSettingsModal({ onClose }) {
   const { state, dispatch } = useStore()
