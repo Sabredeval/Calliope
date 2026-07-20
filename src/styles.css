@@ -735,6 +735,42 @@ textarea { resize: vertical; line-height: 1.5; }
   color: var(--text-faint);
 }
 
+/* user highlights (marker colors, rendered via CSS Highlight API) */
+::highlight(user-hl-0) { background-color: rgba(245, 215, 110, 0.35); }
+::highlight(user-hl-1) { background-color: rgba(126, 212, 145, 0.35); }
+::highlight(user-hl-2) { background-color: rgba(242, 161, 192, 0.35); }
+::highlight(user-hl-3) { background-color: rgba(138, 184, 245, 0.35); }
+
+.hl-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  margin-left: 6px;
+}
+
+.hl-pop {
+  position: fixed;
+  z-index: 45;
+  width: 300px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 10px 12px;
+}
+.hl-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.hl-comment {
+  width: 100%;
+  font-size: 13px;
+  resize: vertical;
+}
+
 /* read-only codex entry inside the mentions panel */
 .panel-entry-head {
   display: flex;

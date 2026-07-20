@@ -44,6 +44,44 @@ const handleProsePaste = (e) => {
   }
 }
 
+/* ---- highlights: marker colors + text-offset helpers ------------------ */
+export const HL_COLORS = ['#f5d76e', '#7ed491', '#f2a1c0', '#8ab8f5']
+
+/* map [start, end) plain-text offsets inside an element to a DOM Range
+   (spans across inline formatting nodes correctly) */
+const rangeFromTextOffsets = (root, start, end) => {
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const r = document.createRange()
+  let n
+  let pos = 0
+  let started = false
+  while ((n = w.nextNode())) {
+    const next = pos + n.length
+    if (!started && start < next) {
+      r.setStart(n, Math.max(0, start - pos))
+      started = true
+    }
+    if (started && end <= next) {
+      r.setEnd(n, end - pos)
+      return r
+    }
+    pos = next
+  }
+  return null
+}
+
+/* plain-text offset of a (node, offset) caret position within root */
+const textOffsetOf = (root, node, offset) => {
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let n
+  let pos = 0
+  while ((n = w.nextNode())) {
+    if (n === node) return pos + offset
+    pos += n.length
+  }
+  return -1
+}
+
 /* Uncontrolled contentEditable — mounted once per scene (or per flow-mode
    chapter, when kind='chapter'), commits upward */
 const SceneProse = React.memo(function SceneProse({ sceneId, initialContent, onCommit, onFocusScene, kind = 'scene' }) {
@@ -183,44 +221,82 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     return list.sort((a, b) => b.s.length - a.s.length)
   }, [state.codex])
 
+  const applyUserHLRef = useRef(null) // latest applyUserHighlights, avoids stale closures
+
   const clearHighlights = () => {
     for (let i = 0; i < CODEX_COLORS.length; i++) CSS.highlights.delete(`codex-c${i}`)
     CSS.highlights.delete('codex-mention')
+    for (let i = 0; i < HL_COLORS.length; i++) CSS.highlights.delete(`user-hl-${i}`)
   }
 
   const applyHighlights = useCallback(() => {
     if (typeof CSS === 'undefined' || !('highlights' in CSS)) return
     clearHighlights()
-    if (!highlightOn) return
     const root = scrollRef.current
-    if (!needleList.length || !root) return
-    const buckets = new Map() // color index (or -1) -> ranges
-    for (const prose of root.querySelectorAll('.ms-prose')) {
-      const walker = document.createTreeWalker(prose, NodeFilter.SHOW_TEXT)
-      let node
-      while ((node = walker.nextNode())) {
-        const lower = node.data.toLowerCase()
-        for (const { s: needle, entry } of needleList) {
-          let i = lower.indexOf(needle)
-          while (i !== -1) {
-            if (!isWordChar(lower[i - 1]) && !isWordChar(lower[i + needle.length])) {
-              const r = document.createRange()
-              r.setStart(node, i)
-              r.setEnd(node, i + needle.length)
-              const ci = CODEX_COLORS.indexOf(entry.color)
-              if (!buckets.has(ci)) buckets.set(ci, [])
-              buckets.get(ci).push(r)
+    if (!root) return
+
+    // codex mention underlines (gated by the A toggle)
+    if (highlightOn && needleList.length) {
+      const buckets = new Map() // color index (or -1) -> ranges
+      for (const prose of root.querySelectorAll('.ms-prose')) {
+        const walker = document.createTreeWalker(prose, NodeFilter.SHOW_TEXT)
+        let node
+        while ((node = walker.nextNode())) {
+          const lower = node.data.toLowerCase()
+          for (const { s: needle, entry } of needleList) {
+            let i = lower.indexOf(needle)
+            while (i !== -1) {
+              if (!isWordChar(lower[i - 1]) && !isWordChar(lower[i + needle.length])) {
+                const r = document.createRange()
+                r.setStart(node, i)
+                r.setEnd(node, i + needle.length)
+                const ci = CODEX_COLORS.indexOf(entry.color)
+                if (!buckets.has(ci)) buckets.set(ci, [])
+                buckets.get(ci).push(r)
+              }
+              i = lower.indexOf(needle, i + needle.length)
             }
-            i = lower.indexOf(needle, i + needle.length)
           }
         }
       }
+      for (const [ci, ranges] of buckets) {
+        const name = ci >= 0 ? `codex-c${ci}` : 'codex-mention'
+        CSS.highlights.set(name, new Highlight(...ranges))
+      }
     }
-    for (const [ci, ranges] of buckets) {
-      const name = ci >= 0 ? `codex-c${ci}` : 'codex-mention'
-      CSS.highlights.set(name, new Highlight(...ranges))
+
+    applyUserHLRef.current?.()
+  }, [needleList, highlightOn]) // eslint-disable-line
+
+  /* user highlights are cheap (only the scenes that carry them get walked),
+     so they apply INSTANTLY on change — unlike the debounced full-document
+     mention scan above */
+  const applyUserHighlights = useCallback(() => {
+    if (typeof CSS === 'undefined' || !('highlights' in CSS)) return
+    for (let i = 0; i < HL_COLORS.length; i++) CSS.highlights.delete(`user-hl-${i}`)
+    const hlBuckets = new Map()
+    for (const h of (state.highlights || [])) {
+      const sec = sectionRefs.current.get(h.sceneId)
+      const prose = sec?.querySelector('.ms-prose')
+      if (!prose || !h.quote) continue
+      const idx = (prose.textContent || '').indexOf(h.quote)
+      if (idx === -1) continue
+      const r = rangeFromTextOffsets(prose, idx, idx + h.quote.length)
+      if (!r) continue
+      const ci = Math.max(0, HL_COLORS.indexOf(h.color))
+      if (!hlBuckets.has(ci)) hlBuckets.set(ci, [])
+      hlBuckets.get(ci).push(r)
     }
-  }, [needleList, highlightOn])
+    for (const [ci, ranges] of hlBuckets) {
+      CSS.highlights.set(`user-hl-${ci}`, new Highlight(...ranges))
+    }
+  }, [state.highlights])
+
+  applyUserHLRef.current = applyUserHighlights
+
+  useEffect(() => {
+    applyUserHighlights() // no debounce: color/comment edits reflect immediately
+  }, [applyUserHighlights])
 
   useEffect(() => {
     const t = setTimeout(applyHighlights, 350)
@@ -294,6 +370,14 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     } else if (document.caretRangeFromPoint) {
       const r = document.caretRangeFromPoint(e.clientX, e.clientY)
       node = r?.startContainer; offset = r?.startOffset
+    }
+    // a click on a user highlight opens its comment; mentions come second
+    const hl = findHighlightAt(node, offset)
+    if (hl) {
+      popAtRect(hl.id, highlightRange(hl)?.getBoundingClientRect())
+      cancelHoverHide()
+      setHoverCard(null)
+      return
     }
     const hit = findMentionAt(node, offset)
     if (hit) {
@@ -476,68 +560,88 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     if (Number.isFinite(n)) goToPage(Math.max(1, Math.min(totalMsPages, n)))
   }
 
-  /* ---- bookmarks: named anchors that travel with the text --------------- */
-  const [bmOpen, setBmOpen] = useState(false)
-  const bookmarks = state.bookmarks || []
+  /* ---- highlights: marked passages with comments, anchored to the text -- */
+  const [hlOpen, setHlOpen] = useState(false) // list dropdown
+  const [hlPop, setHlPop] = useState(null)    // { id, x, y, above } — comment editor
+  const highlights = state.highlights || []
 
   useEffect(() => {
-    if (!bmOpen) return
-    const close = () => setBmOpen(false)
+    if (!hlOpen) return
+    const close = () => setHlOpen(false)
     window.addEventListener('click', close)
     return () => window.removeEventListener('click', close)
-  }, [bmOpen])
+  }, [hlOpen])
 
-  const addBookmark = () => {
-    if (!active) return
-    const sel = window.getSelection()
-    let quote = ''
-    if (sel && !sel.isCollapsed) {
-      quote = sel.toString().trim().replace(/\s+/g, ' ').slice(0, 90)
-    } else if (sel?.anchorNode) {
-      const el = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement
-      const block = el?.closest('.ms-prose') ? el.closest('p,h1,h2,h3,blockquote,li') : null
-      quote = (block?.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 90)
+  /* the comment popover dismisses on outside click, Escape, and scroll —
+     clicks inside it are shielded by its own stopPropagation */
+  useEffect(() => {
+    if (!hlPop) return
+    const onDown = () => setHlPop(null)
+    const onKey = (e) => { if (e.key === 'Escape') setHlPop(null) }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
     }
-    const name = window.prompt('Bookmark name', quote.slice(0, 48) || activeTitle || 'Bookmark')
-    if (name === null) return
-    dispatch({
-      type: 'bookmark/add',
-      bm: {
-        id: uid(),
-        name: name.trim() || quote.slice(0, 48) || 'Bookmark',
-        sceneId: activeId,
-        quote,
-        createdAt: Date.now(),
-      },
-    })
+  }, [hlPop])
+
+  const highlightRange = (h) => {
+    const sec = sectionRefs.current.get(h.sceneId)
+    const prose = sec?.querySelector('.ms-prose')
+    if (!prose || !h.quote) return null
+    const idx = (prose.textContent || '').indexOf(h.quote)
+    if (idx === -1) return null
+    return rangeFromTextOffsets(prose, idx, idx + h.quote.length)
   }
 
-  const jumpToBookmark = (bm) => {
-    setBmOpen(false)
-    const sec = sectionRefs.current.get(bm.sceneId)
+  const popAtRect = (id, rect) => {
+    if (!rect || !rect.height) return
+    const above = rect.bottom + 230 > window.innerHeight
+    setHlPop({ id, x: rect.left, y: above ? rect.top : rect.bottom, above })
+  }
+
+  const addHighlight = () => {
+    const sel = window.getSelection()
+    if (!sel || sel.isCollapsed) return
+    const el = sel.anchorNode?.nodeType === 1 ? sel.anchorNode : sel.anchorNode?.parentElement
+    const prose = el?.closest('.ms-prose')
+    if (!prose) return
+    const quote = sel.toString().trim()
+    if (!quote || quote.length > 500) return
+    const rect = sel.getRangeAt(0).getBoundingClientRect()
+    const id = uid()
+    dispatch({
+      type: 'hl/add',
+      hl: { id, sceneId: prose.dataset.prose, quote, comment: '', color: HL_COLORS[0], createdAt: Date.now() },
+    })
+    sel.removeAllRanges()
+    setSelPop(null)
+    popAtRect(id, rect)
+  }
+
+  const findHighlightAt = (node, offset) => {
+    if (!node || node.nodeType !== 3) return null
+    const prose = node.parentElement?.closest('.ms-prose')
+    if (!prose) return null
+    const off = textOffsetOf(prose, node, offset)
+    if (off < 0) return null
+    const text = prose.textContent || ''
+    for (const h of highlights) {
+      if (h.sceneId !== prose.dataset.prose || !h.quote) continue
+      const idx = text.indexOf(h.quote)
+      if (idx !== -1 && off >= idx && off <= idx + h.quote.length) return h
+    }
+    return null
+  }
+
+  const jumpToHighlight = (h) => {
+    setHlOpen(false)
+    const sec = sectionRefs.current.get(h.sceneId)
     const cont = scrollRef.current
     if (!sec || !cont) return
     spyLockUntil.current = Date.now() + 900
-    let rect = null
-    if (bm.quote) {
-      const prose = sec.querySelector('.ms-prose')
-      const idx = prose ? (prose.textContent || '').indexOf(bm.quote) : -1
-      if (prose && idx !== -1) {
-        let rem = idx
-        const w = document.createTreeWalker(prose, NodeFilter.SHOW_TEXT)
-        let n
-        while ((n = w.nextNode())) {
-          if (rem < n.length) {
-            const r = document.createRange()
-            r.setStart(n, rem)
-            r.setEnd(n, Math.min(rem + Math.min(bm.quote.length, 30), n.length))
-            rect = r.getBoundingClientRect()
-            break
-          }
-          rem -= n.length
-        }
-      }
-    }
+    const rect = highlightRange(h)?.getBoundingClientRect()
     if (rect && rect.height) {
       cont.scrollTo({ top: cont.scrollTop + rect.top - cont.getBoundingClientRect().top - 160, behavior: 'smooth' })
     } else {
@@ -545,7 +649,7 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     }
     sec.classList.add('flash')
     setTimeout(() => sec.classList.remove('flash'), 1400)
-    onActiveSceneChange(bm.sceneId)
+    onActiveSceneChange(h.sceneId)
   }
 
   const sceneTitleOf = (id) => {
@@ -556,13 +660,11 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
     return 'missing scene'
   }
 
-  const BookmarkIcon = ({ plus = false }) => (
+  const MarkerIcon = () => (
     <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true">
-      <path
-        d="M5.5 2.5h9v15l-4.5-3.6L5.5 17.5z"
-        fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"
-      />
-      {plus && <path d="M10 6v4M8 8h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />}
+      <path d="m12.2 3.2 4.6 4.6-7.6 7.6H4.6v-4.6z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="m10.4 5 4.6 4.6" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M3 17.5h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   )
 
@@ -739,15 +841,15 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
               )}
             </>
           )}
-          <button className="tool-btn" title="Bookmark this spot (uses selection or current paragraph)" onMouseDown={(e) => e.preventDefault()} onClick={addBookmark}>
-            <BookmarkIcon plus />
+          <button className="tool-btn" title="Highlight selection & add comment" onMouseDown={(e) => e.preventDefault()} onClick={addHighlight}>
+            <MarkerIcon />
           </button>
           <button
-            className={`tool-btn ${bmOpen ? 'toggled' : ''}`}
-            title="Bookmarks"
-            onClick={(e) => { e.stopPropagation(); setBmOpen((v) => !v) }}
+            className={`tool-btn ${hlOpen ? 'toggled' : ''}`}
+            title="Highlights"
+            onClick={(e) => { e.stopPropagation(); setHlOpen((v) => !v) }}
           >
-            <BookmarkIcon />
+            <span className="hl-list-icon"><MarkerIcon /></span>
           </button>
           <button
             className={`tool-btn ${highlightOn ? 'toggled' : ''}`}
@@ -764,24 +866,27 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
           </button>
         </div>
 
-        {bmOpen && (
+        {hlOpen && (
           <div className="bm-menu" onClick={(e) => e.stopPropagation()}>
-            <div className="bm-menu-head">Bookmarks</div>
-            {bookmarks.length === 0 ? (
+            <div className="bm-menu-head">Highlights</div>
+            {highlights.length === 0 ? (
               <p className="bm-empty">
-                No bookmarks yet. Select a passage (or just click into it) and press the ribbon-plus button to pin the moment — bookmarks follow the text through edits.
+                No highlights yet. Select a passage and press the marker button — the text gets a colored highlight you can comment on, and it follows the text through edits.
               </p>
             ) : (
-              bookmarks.map((bm) => (
-                <div className="bm-row" key={bm.id}>
-                  <button className="bm-jump" onClick={() => jumpToBookmark(bm)} title={bm.quote || bm.name}>
-                    <span className="bm-name">{bm.name}</span>
-                    <span className="bm-context">{sceneTitleOf(bm.sceneId)}</span>
+              highlights.map((h) => (
+                <div className="bm-row" key={h.id}>
+                  <span className="hl-swatch" style={{ background: h.color }} />
+                  <button className="bm-jump" onClick={() => jumpToHighlight(h)} title={h.quote}>
+                    <span className="bm-name">“{h.quote.length > 44 ? `${h.quote.slice(0, 44)}…` : h.quote}”</span>
+                    <span className="bm-context">
+                      {h.comment ? h.comment : sceneTitleOf(h.sceneId)}
+                    </span>
                   </button>
                   <button
                     className="mini-icon danger"
-                    title="Delete bookmark"
-                    onClick={() => dispatch({ type: 'bookmark/delete', id: bm.id })}
+                    title="Delete highlight"
+                    onClick={() => dispatch({ type: 'hl/delete', id: h.id })}
                   >
                     ✕
                   </button>
@@ -791,10 +896,54 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
           </div>
         )}
 
+        {hlPop && (() => {
+          const h = highlights.find((x) => x.id === hlPop.id)
+          if (!h) return null
+          return (
+            <div
+              className="hl-pop"
+              style={{
+                left: Math.max(12, Math.min(hlPop.x, window.innerWidth - 320)),
+                top: hlPop.above ? hlPop.y - 8 : hlPop.y + 8,
+                transform: hlPop.above ? 'translateY(-100%)' : undefined,
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="hl-pop-head">
+                {HL_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    className={`color-dot ${h.color === c ? 'selected' : ''}`}
+                    style={{ background: c }}
+                    onClick={() => dispatch({ type: 'hl/update', id: h.id, patch: { color: c } })}
+                  />
+                ))}
+                <span className="foot-spacer" />
+                <button
+                  className="mini-icon danger"
+                  title="Delete highlight"
+                  onClick={() => { dispatch({ type: 'hl/delete', id: h.id }); setHlPop(null) }}
+                >
+                  ✕
+                </button>
+                <button className="mini-icon" title="Close" onClick={() => setHlPop(null)}>—</button>
+              </div>
+              <textarea
+                className="hl-comment"
+                rows={3}
+                autoFocus
+                placeholder="Comment…"
+                value={h.comment || ''}
+                onChange={(e) => dispatch({ type: 'hl/update', id: h.id, patch: { comment: e.target.value } })}
+              />
+            </div>
+          )
+        })()}
+
         <div
           className={`ms-scroll`}
           ref={scrollRef}
-          onScroll={() => { onScroll(); updateCurPage(); setSelPop(null); cancelHoverHide(); setHoverCard(null) }}
+          onScroll={() => { onScroll(); updateCurPage(); setSelPop(null); setHlPop(null); cancelHoverHide(); setHoverCard(null) }}
           onMouseMove={onProseMouseMove}
           onClick={onProseClick}
           onMouseLeave={() => scheduleHoverHide(300)}

@@ -375,7 +375,20 @@ const loadState = (novelId) => {
       if (parsed && parsed.chapters && parsed.codex) {
         if (!parsed.timeline) parsed.timeline = seedTimeline()
         if (!parsed.relationships) parsed.relationships = seedRelationships(parsed.codex)
-        if (!parsed.bookmarks) parsed.bookmarks = []
+        if (!parsed.highlights) {
+          // migrate old bookmarks: they become highlights, name → comment
+          parsed.highlights = (parsed.bookmarks || [])
+            .filter((b) => b.quote)
+            .map((b) => ({
+              id: b.id,
+              sceneId: b.sceneId,
+              quote: b.quote,
+              comment: b.name || '',
+              color: '#f5d76e',
+              createdAt: b.createdAt,
+            }))
+        }
+        delete parsed.bookmarks
         return ensureHierarchyDefaults(parsed)
       }
     }
@@ -611,15 +624,15 @@ function reducer(state, action) {
     case 'rel/delete':
       return { ...state, relationships: (state.relationships || []).filter((r) => r.id !== action.id) }
 
-    case 'bookmark/add':
-      return { ...state, bookmarks: [...(state.bookmarks || []), action.bm] }
-    case 'bookmark/update':
+    case 'hl/add':
+      return { ...state, highlights: [...(state.highlights || []), action.hl] }
+    case 'hl/update':
       return {
         ...state,
-        bookmarks: (state.bookmarks || []).map((b) => (b.id === action.id ? { ...b, ...action.patch } : b)),
+        highlights: (state.highlights || []).map((h) => (h.id === action.id ? { ...h, ...action.patch } : h)),
       }
-    case 'bookmark/delete':
-      return { ...state, bookmarks: (state.bookmarks || []).filter((b) => b.id !== action.id) }
+    case 'hl/delete':
+      return { ...state, highlights: (state.highlights || []).filter((h) => h.id !== action.id) }
 
     case 'timeline/update':
       return { ...state, timeline: { ...state.timeline, ...action.patch } }
