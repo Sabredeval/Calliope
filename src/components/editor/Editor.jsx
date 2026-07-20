@@ -11,6 +11,13 @@ import ManuscriptDocument from './ManuscriptDocument.jsx'
 
 export { HL_COLORS } from './editorUtils.js'
 
+const requestFrame = typeof window !== 'undefined' && window.requestAnimationFrame
+  ? window.requestAnimationFrame.bind(window)
+  : (callback) => setTimeout(callback, 0)
+const cancelFrame = typeof window !== 'undefined' && window.cancelAnimationFrame
+  ? window.cancelAnimationFrame.bind(window)
+  : clearTimeout
+
 export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, onOpenCodexEntry, focusMode, onToggleFocus }) {
   const { state, dispatch } = useStore()
   const scrollRef = useRef(null)
@@ -350,15 +357,20 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
   const [msTicks, setMsTicks] = useState([])
   const [curPage, setCurPage] = useState(1)
   const ticksRef = useRef([])
-  const tickTimer = useRef(null)
+  const tickFrame = useRef(null)
   const gapStyle = useRef(null)
+  const lastGapCss = useRef('')
+  const blockWordCache = useRef(new WeakMap())
   const pageMarks = state.settings.pageMarks || 'ticks'
 
   useEffect(() => {
     const el = document.createElement('style')
     document.head.appendChild(el)
     gapStyle.current = el
-    return () => el.remove()
+    return () => {
+      if (tickFrame.current !== null) cancelFrame(tickFrame.current)
+      el.remove()
+    }
   }, [])
 
   const computeTicks = useCallback(() => {
@@ -380,7 +392,10 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
       let childIdx = 0
       for (const block of prose.children) {
         childIdx += 1
-        const w = countWords(block.textContent || '')
+        const text = block.textContent || ''
+        const cached = blockWordCache.current.get(block)
+        const w = cached?.text === text ? cached.words : countWords(text)
+        if (!cached || cached.text !== text) blockWordCache.current.set(block, { text, words: w })
         if (!w) continue
         // book convention: a chapter always starts on a fresh page — round
         // the word count up to the next page boundary at each chapter start.
@@ -411,14 +426,21 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
       }
     }
 
-    if (gapStyle.current) {
-      gapStyle.current.textContent = pageMarks === 'lines' ? rules.join('\n') : ''
+    const nextGapCss = pageMarks === 'lines' ? rules.join('\n') : ''
+    if (gapStyle.current && lastGapCss.current !== nextGapCss) {
+      gapStyle.current.textContent = nextGapCss
+      lastGapCss.current = nextGapCss
     }
 
     // pass 2 — measure tick positions after the gaps have reflowed
     const docTop = doc.getBoundingClientRect().top
+    const rects = new Map()
     const ticks = tickDefs.map((d) => {
-      const r = d.el.getBoundingClientRect()
+      let r = rects.get(d.el)
+      if (!r) {
+        r = d.el.getBoundingClientRect()
+        rects.set(d.el, r)
+      }
       return {
         n: d.n,
         y: Math.round(r.top - docTop + d.frac * r.height),
@@ -427,25 +449,34 @@ export default function Editor({ activeSceneId, onActiveSceneChange, scrollReq, 
       }
     })
     ticksRef.current = ticks
-    setMsTicks((prev) => (JSON.stringify(prev) === JSON.stringify(ticks) ? prev : ticks))
+    setMsTicks((previous) => {
+      const unchanged = previous.length === ticks.length && previous.every((tick, index) => {
+        const next = ticks[index]
+        return tick.n === next.n && tick.y === next.y && tick.mid === next.mid && tick.hidden === next.hidden
+      })
+      return unchanged ? previous : ticks
+    })
   }, [pageMarks])
 
+  const scheduleTickComputation = useCallback(() => {
+    if (tickFrame.current !== null) cancelFrame(tickFrame.current)
+    tickFrame.current = requestFrame(() => {
+      tickFrame.current = null
+      computeTicks()
+    })
+  }, [computeTicks])
+
   useEffect(() => {
-    clearTimeout(tickTimer.current)
-    tickTimer.current = setTimeout(computeTicks, 300)
-    return () => clearTimeout(tickTimer.current)
-  }, [computeTicks, state.chapters, state.groups, state.settings.fontSize, state.settings.align, state.settings.para, state.settings.marginX, state.settings.pageSize, state.settings.pageMarkPadding])
+    scheduleTickComputation()
+  }, [scheduleTickComputation, state.chapters, state.groups, state.settings.fontSize, state.settings.align, state.settings.para, state.settings.marginX, state.settings.pageSize, state.settings.pageMarkPadding])
 
   useEffect(() => {
     const el = scrollRef.current
     if (!el || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => {
-      clearTimeout(tickTimer.current)
-      tickTimer.current = setTimeout(computeTicks, 250)
-    })
+    const ro = new ResizeObserver(scheduleTickComputation)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [computeTicks])
+  }, [scheduleTickComputation])
 
   // each chapter starts a fresh page, so totals are per-chapter ceilings
   const totalMsPages = Math.max(
