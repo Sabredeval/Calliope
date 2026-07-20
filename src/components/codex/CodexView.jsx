@@ -3,6 +3,7 @@ import { useStore, CODEX_TYPES, uid, useCodexEntries, mentionsByEntry } from '..
 import RelationGraph from './RelationGraph.jsx'
 import CodexNavigator from './CodexNavigator.jsx'
 import CodexArticle from './CodexArticle.jsx'
+import CodexGallery from './CodexGallery.jsx'
 import {
   RelationshipsSection, EntryTypeColorFields, EntryOverviewEdit, EntryOverviewRead,
   EntryNotesEdit, EntryNotesRead, typeMetaOf,
@@ -81,13 +82,35 @@ export default function CodexView({ selectedId, onSelect, onOpenScene }) {
   const { state, dispatch } = useStore()
   const [typeFilter, setTypeFilter] = useState('all')
   const [query, setQuery] = useState('')
+  const [gallerySort, setGallerySort] = useState('name')
 
   // persisted per-novel so the layout choice survives reload, same mechanism as theme
   const layout = state.settings.codexLayout || 'gallery' // 'gallery' | 'navigator' | 'graph'
   const setLayout = (v) => dispatch({ type: 'settings/update', patch: { codexLayout: v } })
+  const density = state.settings.codexDensity || 'comfortable'
+  const setDensity = (v) => dispatch({ type: 'settings/update', patch: { codexDensity: v } })
 
-  const galleryEntries = useCodexEntries(state.codex, typeFilter, query)
+  const filteredGalleryEntries = useCodexEntries(state.codex, typeFilter, query)
   const mentionsMap = useMemo(() => mentionsByEntry(state.chapters, state.codex), [state.chapters, state.codex])
+
+  const relationshipCounts = useMemo(() => {
+    const counts = new Map()
+    for (const relationship of state.relationships || []) {
+      counts.set(relationship.fromId, (counts.get(relationship.fromId) || 0) + 1)
+      counts.set(relationship.toId, (counts.get(relationship.toId) || 0) + 1)
+    }
+    return counts
+  }, [state.relationships])
+
+  const galleryEntries = useMemo(() => {
+    const entries = [...filteredGalleryEntries]
+    const mentionCount = (entry) => (mentionsMap[entry.id] || []).reduce((total, mention) => total + mention.count, 0)
+    const typeOrder = new Map(CODEX_TYPES.map((type, index) => [type.id, index]))
+    if (gallerySort === 'mentions') return entries.sort((a, b) => mentionCount(b) - mentionCount(a) || a.name.localeCompare(b.name))
+    if (gallerySort === 'relationships') return entries.sort((a, b) => (relationshipCounts.get(b.id) || 0) - (relationshipCounts.get(a.id) || 0) || a.name.localeCompare(b.name))
+    if (gallerySort === 'type') return entries.sort((a, b) => (typeOrder.get(a.type) ?? 999) - (typeOrder.get(b.type) ?? 999) || a.name.localeCompare(b.name))
+    return entries
+  }, [filteredGalleryEntries, gallerySort, mentionsMap, relationshipCounts])
 
   const selected = state.codex.find((e) => e.id === selectedId)
 
@@ -136,6 +159,20 @@ export default function CodexView({ selectedId, onSelect, onOpenScene }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          {layout === 'gallery' && (
+            <>
+              <select className="codex-sort" value={gallerySort} onChange={(e) => setGallerySort(e.target.value)} aria-label="Sort gallery">
+                <option value="name">Sort: Name</option>
+                <option value="type">Sort: Type</option>
+                <option value="mentions">Sort: Mentions</option>
+                <option value="relationships">Sort: Relations</option>
+              </select>
+              <div className="density-toggle" aria-label="Gallery density">
+                <button className={density === 'comfortable' ? 'active' : ''} title="Comfortable cards" aria-pressed={density === 'comfortable'} onClick={() => setDensity('comfortable')}>▦</button>
+                <button className={density === 'compact' ? 'active' : ''} title="Compact cards" aria-pressed={density === 'compact'} onClick={() => setDensity('compact')}>☷</button>
+              </div>
+            </>
+          )}
           <button className="primary-btn" onClick={addEntry}>+ New entry</button>
         </div>
 
@@ -152,32 +189,21 @@ export default function CodexView({ selectedId, onSelect, onOpenScene }) {
               <button className="primary-btn" onClick={addEntry}>Create your first entry</button>
             </div>
           ) : (
-            <div className="codex-grid">
-              {galleryEntries.map((e) => {
-                const t = typeMetaOf(e.type)
-                return (
-                  <button
-                    key={e.id}
-                    className={`codex-card ${e.id === selectedId ? 'selected' : ''}`}
-                    style={{ '--card-accent': e.color }}
-                    onClick={() => onSelect(e.id)}
-                  >
-                    <div className="card-top">
-                      <span className="card-type">{t?.icon} {t?.label}</span>
-                    </div>
-                    <h4 className="card-name">{e.name}</h4>
-                    {e.aliases?.length > 0 && (
-                      <p className="card-aliases">aka {e.aliases.join(', ')}</p>
-                    )}
-                    <p className="card-desc">{e.oneLiner || e.description || <em>No description yet.</em>}</p>
-                    {e.tags?.length > 0 && (
-                      <div className="card-tags">
-                        {e.tags.map((t) => <span key={t} className="tag-chip small">{t}</span>)}
-                      </div>
-                    )}
-                  </button>
-                )
-              })}
+            <div className={`codex-gallery density-${density}`}>
+              <div className="codex-gallery-intro">
+                <div>
+                  <span className="codex-gallery-eyebrow">Story atlas</span>
+                  <h2>{typeFilter === 'all' ? 'All entries' : CODEX_TYPES.find((type) => type.id === typeFilter)?.plural}</h2>
+                </div>
+                <p>{galleryEntries.length} {galleryEntries.length === 1 ? 'entry' : 'entries'} · manuscript-linked world reference</p>
+              </div>
+              <CodexGallery
+                entries={galleryEntries}
+                mentionsMap={mentionsMap}
+                onSelect={onSelect}
+                relationshipCounts={relationshipCounts}
+                selectedId={selectedId}
+              />
             </div>
           )
         )}
