@@ -25,6 +25,7 @@
   --text: #e8e6e3;
   --text-dim: #a09e9a;
   --text-faint: #6e6c68;
+  --reading-progress: color-mix(in srgb, var(--status-revised) 65%, var(--text-faint));
   --accent: #c9a227;
   --accent-soft: rgba(201, 162, 39, 0.14);
   --accent-text: #16161a;
@@ -45,6 +46,7 @@
   --text: #2b2926;
   --text-dim: #6b675f;
   --text-faint: #a29d92;
+  --reading-progress: color-mix(in srgb, var(--status-revised) 65%, var(--text-faint));
   --accent: #8a6d1d;
   --accent-soft: rgba(138, 109, 29, 0.12);
   --accent-text: #ffffff;
@@ -65,6 +67,7 @@
   --text: #4a3c2a;
   --text-dim: #796a53;
   --text-faint: #a38d6f;
+  --reading-progress: color-mix(in srgb, var(--status-revised) 65%, var(--text-faint));
   --accent: #9f7f3f;
   --accent-soft: rgba(159, 127, 63, 0.14);
   --accent-text: #ffffff;
@@ -343,13 +346,11 @@ textarea { resize: vertical; line-height: 1.5; }
 .word-progress { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; margin-right: 6px; }
 .wp-count { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .wp-bar {
-  width: 110px; height: 4px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border-soft);
-  border-radius: 3px;
+  width: 110px; height: 2px;
+  background: var(--border-soft);
   overflow: hidden;
 }
-.wp-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.4s; }
+.wp-fill { height: 100%; background: var(--accent); transition: width 0.4s; }
 
 .icon-btn {
   width: 32px; height: 32px;
@@ -1516,7 +1517,7 @@ textarea { resize: vertical; line-height: 1.5; }
 }
 
 .ms-reading-progress {
-  height: 3px;
+  height: 2px;
   flex-shrink: 0;
   overflow: hidden;
   background: color-mix(in srgb, var(--border-soft) 78%, transparent);
@@ -1525,8 +1526,7 @@ textarea { resize: vertical; line-height: 1.5; }
   display: block;
   width: 100%;
   height: 100%;
-  background: var(--accent);
-  opacity: 0.72;
+  background: var(--reading-progress);
   transform: scaleX(0);
   transform-origin: left center;
   will-change: transform;
