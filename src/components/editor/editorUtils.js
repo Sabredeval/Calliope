@@ -1,4 +1,19 @@
 export const HL_COLORS = ['#f5d76e', '#7ed491', '#f2a1c0', '#8ab8f5']
+export const HIGHLIGHT_SELECTION_MAX_CHARS = 2000
+
+export const proseOfNode = (node) => {
+  const element = node?.nodeType === 1 ? node : node?.parentElement
+  return element?.closest?.('.ms-prose') || null
+}
+
+export const highlightIndex = (highlight, text) => {
+  if (
+    Number.isInteger(highlight.start) &&
+    highlight.start >= 0 &&
+    text.slice(highlight.start, highlight.start + highlight.quote.length) === highlight.quote
+  ) return highlight.start
+  return text.indexOf(highlight.quote)
+}
 
 const escapeHtml = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const PAGE_JUNK = /^(?:page\s+)?\d+$/i
