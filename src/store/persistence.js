@@ -12,8 +12,9 @@ export const novelKey = (id) => `calliope.novel.${id}`
 export const blankState = (title = 'Untitled Novel', author = '', theme = 'dark') => ({
   novel: { title, author, wordGoal: 0 },
   groups: [],
+  threads: [],
   chapters: [
-    { id: uid(), title: 'Chapter 1', groupId: null, content: '<p></p>', summary: '', status: 'idea', scenes: [] },
+    { id: uid(), title: 'Chapter 1', groupId: null, content: '<p></p>', summary: '', status: 'idea', threadIds: [], scenes: [] },
   ],
   codex: [],
   relationships: [],
@@ -25,11 +26,13 @@ export const blankState = (title = 'Untitled Novel', author = '', theme = 'dark'
 // chapters existed, so nothing older ever needs a real migration step.
 const ensureHierarchyDefaults = (data) => {
   if (!Array.isArray(data.groups)) data.groups = []
+  if (!Array.isArray(data.threads)) data.threads = []
   for (const c of data.chapters || []) {
     if (c.groupId === undefined) c.groupId = null
     if (c.content === undefined) c.content = '<p></p>'
     if (c.summary === undefined) c.summary = ''
     if (c.status === undefined) c.status = 'idea'
+    if (!Array.isArray(c.threadIds)) c.threadIds = []
     if (!Array.isArray(c.scenes)) c.scenes = []
     // Scenes are archived for now — fold any existing scene content into the
     // chapter's own flow content (same divider the "scene break" toolbar

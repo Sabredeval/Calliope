@@ -272,7 +272,7 @@ function Shell({ onLibrary }) {
           </>
         )}
         {view === 'plan' && (
-          <PlanView onOpenScene={openScene} />
+          <PlanView onOpenScene={openScene} onOpenCodexEntry={openCodexEntry} />
         )}
         {view === 'codex' && (
           <CodexView selectedId={selectedCodexId} onSelect={setSelectedCodexId} onOpenScene={openScene} />

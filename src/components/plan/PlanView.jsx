@@ -1,14 +1,48 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { X, LayoutGrid, BarChart3, Users } from 'lucide-react'
 import { useStore, chapterWords, groupWords, SCENE_STATUSES } from '../../store.jsx'
+import PacingChart from './PacingChart.jsx'
+import CastChart from './CastChart.jsx'
 
 const statusOf = (id) => SCENE_STATUSES.find((s) => s.id === id) || SCENE_STATUSES[0]
 
-function PlanCard({ ch, dragHandlers, dropClass, onOpen, dispatch }) {
-  const [editingSummary, setEditingSummary] = useState(false)
-  const status = statusOf(ch.status)
+function ThreadPicker({ ch, threads, dispatch, onClose }) {
+  useEffect(() => {
+    window.addEventListener('click', onClose)
+    return () => window.removeEventListener('click', onClose)
+  }, [onClose])
 
   return (
-    <div className={`plan-card ${dropClass(ch.id)}`} style={{ '--card-accent': status.color }} {...dragHandlers(ch)}>
+    <div className="plan-thread-picker" onMouseDown={(e) => e.stopPropagation()}>
+      {threads.length === 0 && <p className="plan-thread-picker-empty">No threads yet — add one from the toolbar.</p>}
+      {threads.map((t) => {
+        const active = (ch.threadIds || []).includes(t.id)
+        return (
+          <button
+            key={t.id}
+            className={`plan-thread-option ${active ? 'active' : ''}`}
+            onClick={() => dispatch({ type: 'chapter/toggleThread', id: ch.id, threadId: t.id })}
+          >
+            <span className="thread-dot" style={{ background: t.color }} />
+            {t.title}
+            {active && <span className="plan-thread-check">✓</span>}
+          </button>
+        )
+      })}
+      <button className="plan-thread-done" onClick={onClose}>Done</button>
+    </div>
+  )
+}
+
+function PlanCard({ ch, threads, activeThreadId, dragHandlers, dropClass, onOpen, dispatch }) {
+  const [editingSummary, setEditingSummary] = useState(false)
+  const [pickingThreads, setPickingThreads] = useState(false)
+  const status = statusOf(ch.status)
+  const chapterThreads = threads.filter((t) => (ch.threadIds || []).includes(t.id))
+  const dimmed = activeThreadId && !(ch.threadIds || []).includes(activeThreadId)
+
+  return (
+    <div className={`plan-card ${dropClass(ch.id)} ${dimmed ? 'dimmed' : ''}`} style={{ '--card-accent': status.color }} {...dragHandlers(ch)}>
       <div className="plan-card-top">
         <button
           className="plan-card-status"
@@ -48,11 +82,22 @@ function PlanCard({ ch, dragHandlers, dropClass, onOpen, dispatch }) {
           {ch.summary || 'Click to add a synopsis…'}
         </p>
       )}
+
+      <div className="plan-card-threads" onClick={(e) => { e.stopPropagation(); setPickingThreads(true) }}>
+        {chapterThreads.length === 0 ? (
+          <span className="plan-card-threads-empty">+ Threads</span>
+        ) : (
+          chapterThreads.map((t) => (
+            <span key={t.id} className="thread-chip" style={{ '--thread-color': t.color }}>{t.title}</span>
+          ))
+        )}
+      </div>
+      {pickingThreads && <ThreadPicker ch={ch} threads={threads} dispatch={dispatch} onClose={() => setPickingThreads(false)} />}
     </div>
   )
 }
 
-function PlanColumn({ title, groupId, chapters, groups, dispatch, drag, setDrag, dropHint, setDropHint, onOpen }) {
+function PlanColumn({ title, groupId, chapters, groups, threads, activeThreadId, dispatch, drag, setDrag, dropHint, setDropHint, onOpen }) {
   const words = groups ? groupWords(groupId, chapters, groups) : chapters.filter((c) => (c.groupId ?? null) === (groupId ?? null)).reduce((n, c) => n + chapterWords(c), 0)
   const list = chapters
     .filter((c) => (c.groupId ?? null) === (groupId ?? null))
@@ -117,7 +162,7 @@ function PlanColumn({ title, groupId, chapters, groups, dispatch, drag, setDrag,
 
       <div className="plan-column-cards">
         {list.map((ch) => (
-          <PlanCard key={ch.id} ch={ch} dragHandlers={dragHandlers} dropClass={dropClass} onOpen={onOpen} dispatch={dispatch} />
+          <PlanCard key={ch.id} ch={ch} threads={threads} activeThreadId={activeThreadId} dragHandlers={dragHandlers} dropClass={dropClass} onOpen={onOpen} dispatch={dispatch} />
         ))}
 
         <button
@@ -131,13 +176,60 @@ function PlanColumn({ title, groupId, chapters, groups, dispatch, drag, setDrag,
   )
 }
 
-export default function PlanView({ onOpenScene }) {
+function ThreadLegend({ threads, activeThreadId, setActiveThreadId, dispatch }) {
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
+
+  const addThread = () => {
+    const title = draft.trim()
+    if (title) dispatch({ type: 'thread/add', title })
+    setDraft('')
+    setAdding(false)
+  }
+
+  return (
+    <div className="plan-thread-legend">
+      {threads.map((t) => (
+        <span key={t.id} className={`thread-chip legend ${activeThreadId === t.id ? 'active' : ''}`} style={{ '--thread-color': t.color }}>
+          <button className="thread-chip-label" onClick={() => setActiveThreadId(activeThreadId === t.id ? null : t.id)} title={`Highlight "${t.title}"`}>
+            {t.title}
+          </button>
+          <button
+            className="thread-chip-remove"
+            title="Delete thread"
+            onClick={() => { if (window.confirm(`Delete thread "${t.title}"? It will be removed from every chapter.`)) dispatch({ type: 'thread/delete', id: t.id }) }}
+          >
+            <X size={11} />
+          </button>
+        </span>
+      ))}
+      {adding ? (
+        <input
+          className="plan-thread-add-input"
+          autoFocus
+          value={draft}
+          placeholder="Thread name…"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') addThread(); if (e.key === 'Escape') { setDraft(''); setAdding(false) } }}
+          onBlur={addThread}
+        />
+      ) : (
+        <button className="ghost-btn slim" onClick={() => setAdding(true)}>+ Thread</button>
+      )}
+    </div>
+  )
+}
+
+export default function PlanView({ onOpenScene, onOpenCodexEntry }) {
   const { state, dispatch } = useStore()
   const [drag, setDrag] = useState(null)
   const [dropHint, setDropHint] = useState(null)
+  const [activeThreadId, setActiveThreadId] = useState(null)
+  const [mode, setMode] = useState('board') // 'board' | 'pacing' | 'cast'
 
   const groups = state.groups || []
   const chapters = state.chapters
+  const threads = state.threads || []
 
   // Only top-level acts get their own column for v1 — nested acts fold into
   // their parent's column via groupWords, matching how the sidebar already
@@ -146,23 +238,37 @@ export default function PlanView({ onOpenScene }) {
     .filter((g) => !g.parentId)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
-  const columnProps = { chapters, groups, dispatch, drag, setDrag, dropHint, setDropHint, onOpen: onOpenScene }
+  const columnProps = { chapters, groups, threads, activeThreadId, dispatch, drag, setDrag, dropHint, setDropHint, onOpen: onOpenScene }
 
   return (
     <div className="plan-wrap">
       <div className="plan-toolbar">
         <h2>Plan</h2>
         <span className="plan-toolbar-hint">{chapters.length} chapters across {topGroups.length || 1} {topGroups.length === 1 ? 'act' : 'acts'}</span>
+        {mode === 'board' && <ThreadLegend threads={threads} activeThreadId={activeThreadId} setActiveThreadId={setActiveThreadId} dispatch={dispatch} />}
         <span className="toolbar-spacer" />
-        <button className="ghost-btn" onClick={() => dispatch({ type: 'group/add', title: `Act ${topGroups.length + 1}` })}>+ New act</button>
+        <div className="plan-mode-toggle" aria-label="Plan view">
+          <button className={mode === 'board' ? 'active' : ''} title="Corkboard" aria-pressed={mode === 'board'} onClick={() => setMode('board')}><LayoutGrid size={14} /></button>
+          <button className={mode === 'pacing' ? 'active' : ''} title="Pacing" aria-pressed={mode === 'pacing'} onClick={() => setMode('pacing')}><BarChart3 size={14} /></button>
+          <button className={mode === 'cast' ? 'active' : ''} title="Cast presence" aria-pressed={mode === 'cast'} onClick={() => setMode('cast')}><Users size={14} /></button>
+        </div>
+        {mode === 'board' && (
+          <button className="ghost-btn" onClick={() => dispatch({ type: 'group/add', title: `Act ${topGroups.length + 1}` })}>+ New act</button>
+        )}
       </div>
 
-      <div className="plan-board">
-        {topGroups.map((g) => (
-          <PlanColumn key={g.id} title={g.title} groupId={g.id} {...columnProps} />
-        ))}
-        <PlanColumn title={topGroups.length ? 'Unassigned' : 'Manuscript'} groupId={null} {...columnProps} />
-      </div>
+      {mode === 'board' ? (
+        <div className="plan-board">
+          {topGroups.map((g) => (
+            <PlanColumn key={g.id} title={g.title} groupId={g.id} {...columnProps} />
+          ))}
+          <PlanColumn title={topGroups.length ? 'Unassigned' : 'Manuscript'} groupId={null} {...columnProps} />
+        </div>
+      ) : mode === 'pacing' ? (
+        <PacingChart state={state} />
+      ) : (
+        <CastChart state={state} onOpenScene={onOpenScene} onOpenCodexEntry={onOpenCodexEntry} />
+      )}
     </div>
   )
 }

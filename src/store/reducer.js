@@ -21,6 +21,7 @@ export function reducer(state, action) {
         content: '<p></p>',
         summary: '',
         status: 'idea',
+        threadIds: [],
         scenes: [],
       }
       // reuses the same "just created, jump to it" side-channel as scene/add
@@ -218,6 +219,40 @@ export function reducer(state, action) {
         codex: state.codex.filter((e) => e.id !== action.id),
         relationships: (state.relationships || []).filter((r) => r.fromId !== action.id && r.toId !== action.id),
       }
+
+    case 'thread/add': {
+      const thread = {
+        id: action.id || uid(),
+        title: action.title || `Thread ${(state.threads || []).length + 1}`,
+        color: action.color || CODEX_COLORS[(state.threads || []).length % CODEX_COLORS.length],
+      }
+      return { ...state, threads: [...(state.threads || []), thread] }
+    }
+    case 'thread/update':
+      return {
+        ...state,
+        threads: (state.threads || []).map((t) => (t.id === action.id ? { ...t, ...action.patch } : t)),
+      }
+    case 'thread/delete':
+      return {
+        ...state,
+        threads: (state.threads || []).filter((t) => t.id !== action.id),
+        chapters: state.chapters.map((c) => (
+          c.threadIds?.includes(action.id) ? { ...c, threadIds: c.threadIds.filter((id) => id !== action.id) } : c
+        )),
+      }
+    // toggles one thread's membership on a chapter — the corkboard's unit of
+    // interaction, so it doesn't need the caller to compute the new array
+    case 'chapter/toggleThread': {
+      return {
+        ...state,
+        chapters: state.chapters.map((c) => {
+          if (c.id !== action.id) return c
+          const has = (c.threadIds || []).includes(action.threadId)
+          return { ...c, threadIds: has ? c.threadIds.filter((id) => id !== action.threadId) : [...(c.threadIds || []), action.threadId] }
+        }),
+      }
+    }
 
     case 'rel/add':
       return { ...state, relationships: [...(state.relationships || []), action.rel] }
