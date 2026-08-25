@@ -1,9 +1,10 @@
 import React from 'react'
+import { LayoutGrid, Share2, Sparkles } from 'lucide-react'
 import { CODEX_TYPES } from '../../store.jsx'
 
 const SECTIONS = [
-  { id: 'browse', label: 'Browse', icon: '▦', hint: 'Explore codex entries' },
-  { id: 'relations', label: 'Relations', icon: '🕸', hint: 'Map entry relationships' },
+  { id: 'browse', label: 'Browse', icon: LayoutGrid, hint: 'Explore codex entries' },
+  { id: 'relations', label: 'Relations', icon: Share2, hint: 'Map entry relationships' },
 ]
 
 function NavigationToggleIcon({ expanded }) {
@@ -29,7 +30,7 @@ function SectionToggle({ section, setSection, compact = false }) {
           role="tab"
           aria-selected={section === item.id}
         >
-          <span aria-hidden="true">{item.icon}</span>
+          <span aria-hidden="true"><item.icon size={14} /></span>
           {item.label}
         </button>
       ))}
@@ -69,12 +70,12 @@ export default function CodexNavigation({ counts, onCollapse, relationshipCount,
         <nav className="codex-type-list" aria-label="Entry type">
           <span className="codex-type-list-label">Entry types</span>
           <button className={`codex-type-filter ${typeFilter === 'all' ? 'active' : ''}`} onClick={() => setTypeFilter('all')}>
-            <span className="codex-type-filter-label"><span className="codex-type-icon all" aria-hidden="true">✦</span>All entries</span>
+            <span className="codex-type-filter-label"><span className="codex-type-icon all" aria-hidden="true"><Sparkles size={14} /></span>All entries</span>
             <span className="codex-type-count">{counts.all}</span>
           </button>
           {CODEX_TYPES.map((type) => (
             <button key={type.id} className={`codex-type-filter ${typeFilter === type.id ? 'active' : ''}`} onClick={() => setTypeFilter(type.id)}>
-              <span className="codex-type-filter-label"><span className="codex-type-icon" aria-hidden="true">{type.icon}</span>{type.plural}</span>
+              <span className="codex-type-filter-label"><span className="codex-type-icon" aria-hidden="true"><type.icon size={14} /></span>{type.plural}</span>
               <span className="codex-type-count">{counts[type.id]}</span>
             </button>
           ))}

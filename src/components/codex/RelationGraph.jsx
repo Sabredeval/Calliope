@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react'
+import { FileText, Link2 } from 'lucide-react'
 import { useStore, uid, CODEX_TYPES } from '../../store.jsx'
 
 const SPRING_LEN = 170
@@ -8,7 +9,7 @@ const GRAVITY = 0.012
 const DAMPING = 0.82
 const MAX_V = 10
 
-const typeIcon = (t) => CODEX_TYPES.find((c) => c.id === t)?.icon || '📄'
+const typeIcon = (t) => CODEX_TYPES.find((c) => c.id === t)?.icon || FileText
 
 export default function RelationGraph({ selectedId, onSelect, query }) {
   const { state, dispatch } = useStore()
@@ -330,7 +331,9 @@ export default function RelationGraph({ selectedId, onSelect, query }) {
                 {matchesQuery(e) && <circle r={r + 8} className="node-query-ring" />}
                 {linking && <circle r={r + 6} className="node-link-ring" />}
                 <circle r={r} fill={e.color} className="node-circle" />
-                <text y={5} textAnchor="middle" className="node-icon" style={{ fontSize: r * 0.85 }}>{typeIcon(e.type)}</text>
+                <foreignObject x={-r * 0.6} y={-r * 0.6} width={r * 1.2} height={r * 1.2} className="node-icon">
+                  {React.createElement(typeIcon(e.type), { size: r * 1.2, strokeWidth: 1.75 })}
+                </foreignObject>
                 <text y={r + 16} textAnchor="middle" className="node-label">{e.name}</text>
               </g>
             )
@@ -345,7 +348,7 @@ export default function RelationGraph({ selectedId, onSelect, query }) {
           title="Click two nodes to connect them"
           onClick={() => setLinkFrom(linkFrom === null ? '' : null)}
         >
-          🔗 {linkFrom === null ? 'Link' : linkFrom === '' ? 'Pick first node…' : 'Pick second node…'}
+          <Link2 size={14} /> {linkFrom === null ? 'Link' : linkFrom === '' ? 'Pick first node…' : 'Pick second node…'}
         </button>
         <button className="icon-btn" title="Zoom out" onClick={() => setTransform((t) => ({ ...t, k: Math.max(0.2, t.k / 1.3) }))}>−</button>
         <button className="icon-btn" title="Zoom in" onClick={() => setTransform((t) => ({ ...t, k: Math.min(3.5, t.k * 1.3) }))}>+</button>

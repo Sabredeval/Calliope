@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
+import { BookOpen, Library } from 'lucide-react'
 import { useStore, plainText, flatScenes, CODEX_TYPES } from '../../store.jsx'
 
 function snippet(text, q, radius = 60) {
@@ -79,7 +80,7 @@ export default function SearchModal({ onClose, onOpenScene, onOpenCodex }) {
               onClick={() => open(r)}
             >
               <span className="sr-kind" style={r.color ? { background: r.color } : undefined}>
-                {r.kind === 'scene' ? '📖' : '📚'}
+                {r.kind === 'scene' ? <BookOpen size={14} /> : <Library size={14} />}
               </span>
               <span className="sr-body">
                 <span className="sr-title">{r.title}</span>

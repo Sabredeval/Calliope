@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { Sun, ScrollText, Moon, BookMarked, History } from 'lucide-react'
 import { StoreProvider, useStore, novelWords, loadLibrary, saveLibrary, buildManuscriptTree } from './store.jsx'
 import LibraryView from './components/library/LibraryView.jsx'
 import ManuscriptSidebar from './components/editor/ManuscriptSidebar.jsx'
@@ -51,6 +52,8 @@ const Icons = {
       <circle cx="10" cy="6.4" r="1" fill="currentColor" stroke="none" />
     </svg>
   ),
+  codex: <BookMarked width={20} height={20} strokeWidth={1.5} aria-hidden="true" />,
+  timeline: <History width={20} height={20} strokeWidth={1.5} aria-hidden="true" />,
 }
 
 function Shell({ onLibrary }) {
@@ -68,9 +71,9 @@ function Shell({ onLibrary }) {
   const theme = state.settings.theme || 'dark'
   const nextTheme = (value) => (value === 'dark' ? 'light' : value === 'light' ? 'parchment' : 'dark')
   const themeButton = {
-    dark: { title: 'Switch to light mode', icon: '☀️' },
-    light: { title: 'Switch to parchment mode', icon: '📜' },
-    parchment: { title: 'Switch to dark mode', icon: '🌙' },
+    dark: { title: 'Switch to light mode', icon: Sun },
+    light: { title: 'Switch to parchment mode', icon: ScrollText },
+    parchment: { title: 'Switch to dark mode', icon: Moon },
   }
 
   useEffect(() => {
@@ -194,7 +197,7 @@ function Shell({ onLibrary }) {
               title={themeButton[theme]?.title || 'Switch theme'}
               onClick={() => dispatch({ type: 'settings/update', patch: { theme: nextTheme(theme) } })}
             >
-              {themeButton[theme]?.icon || '☀️'}
+              {React.createElement(themeButton[theme]?.icon || Sun, { size: 18 })}
             </button>
             <button className="icon-btn" title="Settings" onClick={() => setSettingsOpen(true)}>{Icons.settings}</button>
           </div>
@@ -210,10 +213,10 @@ function Shell({ onLibrary }) {
           {Icons.write}
         </button>
         <button className={`ab-btn ${view === 'codex' ? 'active' : ''}`} title="Codex" onClick={() => setView('codex')}>
-          <img className="ab-img" src="/codex-icon-small.png" alt="" />
+          {Icons.codex}
         </button>
         <button className={`ab-btn ${view === 'timeline' ? 'active' : ''}`} title="Timeline" onClick={() => setView('timeline')}>
-          <img className="ab-img" src="/timeline.png" alt="" />
+          {Icons.timeline}
         </button>
 
         <div className="ab-spacer" />
@@ -232,7 +235,7 @@ function Shell({ onLibrary }) {
           title={themeButton[theme]?.title || 'Switch theme'}
           onClick={() => dispatch({ type: 'settings/update', patch: { theme: nextTheme(theme) } })}
         >
-          {themeButton[theme]?.icon || '☀️'}
+          {React.createElement(themeButton[theme]?.icon || Sun, { size: 20 })}
         </button>
         <button className="ab-btn" title="Settings" onClick={() => setSettingsOpen(true)}>
           {Icons.settings}

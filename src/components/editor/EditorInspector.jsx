@@ -1,7 +1,8 @@
 import React from 'react'
+import { FileText } from 'lucide-react'
 import { CODEX_TYPES, SCENE_STATUSES } from '../../store.jsx'
 
-const typeIcon = (type) => CODEX_TYPES.find((entryType) => entryType.id === type)?.icon || '📄'
+const typeIcon = (type) => CODEX_TYPES.find((entryType) => entryType.id === type)?.icon || FileText
 
 export default function EditorInspector({
   active, activeId, activeTitle, activeWords, dispatch, highlights, inspectorTab,
@@ -102,7 +103,7 @@ export default function EditorInspector({
           <button className="mini-btn" onClick={() => { setPanelEntryId(null); onOpenCodexEntry(panelEntry.id) }}>Edit in codex →</button>
         </div>
         <div className="detail-hero" style={{ '--hero': panelEntry.color }}>
-          <span className="hero-type">{typeIcon(panelEntry.type)} {typeMeta?.label}</span>
+          <span className="hero-type">{React.createElement(typeIcon(panelEntry.type), { size: 14 })} {typeMeta?.label}</span>
           <h2 className="hero-name">{panelEntry.name}</h2>
           {panelEntry.aliases?.length > 0 && <p className="hero-aliases">also known as {panelEntry.aliases.join(' · ')}</p>}
         </div>
@@ -139,7 +140,7 @@ export default function EditorInspector({
           {mentions.map(({ entry, count }) => (
             <button key={entry.id} className="mention-card" onClick={() => setPanelEntryId(entry.id)} title="Read here">
               <span className="mention-swatch" style={{ background: entry.color }} />
-              <span className="mention-body"><span className="mention-name">{typeIcon(entry.type)} {entry.name}</span>{entry.oneLiner && <span className="mention-desc">{entry.oneLiner}</span>}</span>
+              <span className="mention-body"><span className="mention-name">{React.createElement(typeIcon(entry.type), { size: 14 })} {entry.name}</span>{entry.oneLiner && <span className="mention-desc">{entry.oneLiner}</span>}</span>
               <span className="mention-count">×{count}</span>
             </button>
           ))}

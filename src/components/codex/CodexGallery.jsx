@@ -1,4 +1,5 @@
 import React from 'react'
+import { FileText } from 'lucide-react'
 import { typeMetaOf } from './CodexShared.jsx'
 
 const plural = (count, singular, pluralForm = `${singular}s`) => `${count.toLocaleString()} ${count === 1 ? singular : pluralForm}`
@@ -31,7 +32,7 @@ function CodexCard({ entry, mentions, onSelect, relationshipCount, selected }) {
     >
       <span className="card-accent" aria-hidden="true" />
       <div className="card-top">
-        <span className="card-glyph" aria-hidden="true">{type?.icon || '📄'}</span>
+        <span className="card-glyph" aria-hidden="true">{React.createElement(type?.icon || FileText, { size: 16 })}</span>
         <span className="card-type">{type?.label || 'Entry'}</span>
       </div>
 

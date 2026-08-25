@@ -22,7 +22,7 @@ function CodexDetail({ entry, onClose, onSelectEntry }) {
       <aside className="codex-detail">
         <div className="detail-hero" style={{ '--hero': entry.color }}>
           <div className="hero-top">
-            <span className="hero-type">{typeMeta?.icon} {typeMeta?.label}</span>
+            <span className="hero-type">{typeMeta?.icon && <typeMeta.icon size={14} />} {typeMeta?.label}</span>
             <span className="hero-actions">
               <button className="mini-btn" onClick={() => setEditing(true)}>✎ Edit</button>
               <button className="icon-btn" title="Close" onClick={onClose}>✕</button>

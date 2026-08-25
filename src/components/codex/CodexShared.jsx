@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Lock } from 'lucide-react'
 import { useStore, CODEX_TYPES, CODEX_COLORS, uid } from '../../store.jsx'
 
 /* Building blocks shared by both codex layouts — the card-grid + narrow
@@ -209,7 +210,7 @@ export function EntryNotesRead({ entry }) {
   if (!entry.notes) return <p className="read-empty">No private notes.</p>
   return (
     <div className="read-notes">
-      <span className="read-notes-label">🔒 Private notes</span>
+      <span className="read-notes-label"><Lock size={12} /> Private notes</span>
       {entry.notes.split(/\n+/).map((p, i) => <p key={i}>{p}</p>)}
     </div>
   )

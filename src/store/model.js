@@ -1,3 +1,5 @@
+import { User, Map, Key, ScrollText, Landmark } from 'lucide-react'
+
 /* ---------- helpers ---------- */
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
@@ -44,11 +46,11 @@ export const SCENE_STATUSES = [
 ]
 
 export const CODEX_TYPES = [
-  { id: 'character', label: 'Character', plural: 'Characters', icon: '👤' },
-  { id: 'location', label: 'Location', plural: 'Locations', icon: '🗺️' },
-  { id: 'item', label: 'Item', plural: 'Items', icon: '🗝️' },
-  { id: 'lore', label: 'Lore', plural: 'Lore', icon: '📜' },
-  { id: 'organization', label: 'Organization', plural: 'Organizations', icon: '🏛️' },
+  { id: 'character', label: 'Character', plural: 'Characters', icon: User },
+  { id: 'location', label: 'Location', plural: 'Locations', icon: Map },
+  { id: 'item', label: 'Item', plural: 'Items', icon: Key },
+  { id: 'lore', label: 'Lore', plural: 'Lore', icon: ScrollText },
+  { id: 'organization', label: 'Organization', plural: 'Organizations', icon: Landmark },
 ]
 
 export const CODEX_COLORS = [

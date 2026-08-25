@@ -43,12 +43,12 @@ export function CodexSelectionPopover({ addHighlight, existingEntry, onOpenCodex
       ) : existingEntry ? (
         <button className="sel-open" onClick={() => { setSelPop(null); onOpenCodexEntry(existingEntry.id) }}>
           <span className="mention-swatch" style={{ background: existingEntry.color }} />
-          {CODEX_TYPES.find((type) => type.id === existingEntry.type)?.icon} {existingEntry.name} — open in codex
+          {(() => { const EntryIcon = CODEX_TYPES.find((type) => type.id === existingEntry.type)?.icon; return EntryIcon ? <EntryIcon size={14} /> : null })()} {existingEntry.name} — open in codex
         </button>
       ) : (
         <>
           <span className="sel-label">Add “{selPop.text}” as</span>
-          {CODEX_TYPES.map((type) => <button key={type.id} className="sel-type" title={type.label} onClick={() => quickAdd(type.id)}>{type.icon}</button>)}
+          {CODEX_TYPES.map((type) => <button key={type.id} className="sel-type" title={type.label} onClick={() => quickAdd(type.id)}><type.icon size={15} /></button>)}
         </>
       )}
     </div>
@@ -72,7 +72,7 @@ export function CodexHoverCard({ cancelHoverHide, hoverCard, onOpenCodexEntry, s
       onMouseEnter={cancelHoverHide}
       onMouseLeave={() => scheduleHoverHide(250)}
     >
-      <div className="hc-head"><span className="hc-icon">{type?.icon}</span><span className="hc-name">{entry.name}</span><span className="hc-type">{type?.label}</span></div>
+      <div className="hc-head"><span className="hc-icon">{type?.icon && <type.icon size={14} />}</span><span className="hc-name">{entry.name}</span><span className="hc-type">{type?.label}</span></div>
       {entry.aliases?.length > 0 && <p className="hc-aliases">also: {entry.aliases.join(', ')}</p>}
       {entry.oneLiner && <p className="hc-lede">{entry.oneLiner}</p>}
       {entry.description && <p className="hc-desc">{entry.description}</p>}
@@ -89,7 +89,7 @@ export function CodexToast({ onOpenCodexEntry, setToast, toast }) {
   if (!toast) return null
   return (
     <div className="sel-toast">
-      <span>{toast.icon} “{toast.name}” added to codex</span>
+      <span>{toast.icon && <toast.icon size={14} />} “{toast.name}” added to codex</span>
       <button onClick={() => { setToast(null); onOpenCodexEntry(toast.id) }}>Edit entry →</button>
       <button className="toast-x" onClick={() => setToast(null)}>✕</button>
     </div>

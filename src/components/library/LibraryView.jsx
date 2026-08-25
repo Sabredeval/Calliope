@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { Sun, ScrollText, Moon, Upload, Plus } from 'lucide-react'
 import {
   loadLibrary, saveLibrary, createNovel, duplicateNovel, deleteNovel,
   normalizeNovelData, novelKey, CODEX_COLORS,
@@ -38,9 +39,9 @@ export default function LibraryView({ onOpen }) {
   const refresh = () => setLib(loadLibrary())
   const nextTheme = (value) => (value === 'dark' ? 'light' : value === 'light' ? 'parchment' : 'dark')
   const themeButton = {
-    dark: { title: 'Switch to light mode', icon: '☀️' },
-    light: { title: 'Switch to parchment mode', icon: '📜' },
-    parchment: { title: 'Switch to dark mode', icon: '🌙' },
+    dark: { title: 'Switch to light mode', icon: Sun },
+    light: { title: 'Switch to parchment mode', icon: ScrollText },
+    parchment: { title: 'Switch to dark mode', icon: Moon },
   }
 
   const toggleTheme = () => {
@@ -106,10 +107,10 @@ export default function LibraryView({ onOpen }) {
           </div>
         </div>
         <div className="lib-actions">
-          <button className="ghost-btn" onClick={() => fileRef.current?.click()}>⇪ Import</button>
-          <button className="primary-btn" onClick={handleNew}>+ New novel</button>
+          <button className="ghost-btn" onClick={() => fileRef.current?.click()}><Upload size={14} /> Import</button>
+          <button className="primary-btn" onClick={handleNew}><Plus size={14} /> New novel</button>
           <button className="icon-btn" title={themeButton[lib.theme]?.title || 'Switch theme'} onClick={toggleTheme}>
-            {themeButton[lib.theme]?.icon || '☀️'}
+            {React.createElement(themeButton[lib.theme]?.icon || Sun, { size: 18 })}
           </button>
           <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={handleImportFile} />
         </div>

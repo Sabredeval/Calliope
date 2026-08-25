@@ -35,7 +35,7 @@ export default function CodexNavigator({ codex, query, selectedId, onSelect, typ
         <div className="codex-nav-group" key={g.type.id}>
           <button className="codex-nav-group-head" onClick={() => toggle(g.type.id)}>
             <span className={`codex-nav-caret ${collapsed.has(g.type.id) ? 'collapsed' : ''}`}>▾</span>
-            <span>{g.type.icon} {g.type.plural}</span>
+            <span><g.type.icon size={13} /> {g.type.plural}</span>
             <span className="count">{g.items.length}</span>
           </button>
           {!collapsed.has(g.type.id) && (

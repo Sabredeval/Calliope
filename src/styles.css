@@ -176,17 +176,6 @@ textarea { resize: vertical; line-height: 1.5; }
   background: var(--accent);
 }
 
-.ab-img {
-  width: 20px;
-  height: 20px;
-  object-fit: contain;
-  opacity: 0.55;
-  filter: grayscale(0.5);
-  transition: opacity 0.15s, filter 0.15s;
-}
-.ab-btn:hover .ab-img,
-.ab-btn.active .ab-img { opacity: 1; filter: none; }
-
 .ab-theme { font-size: 15px; }
 
 .ab-sep { width: 22px; height: 1px; background: var(--border); margin: 5px 0; flex-shrink: 0; }
@@ -1978,8 +1967,8 @@ textarea { resize: vertical; line-height: 1.5; }
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.hc-head { display: flex; align-items: baseline; gap: 8px; }
-.hc-icon { font-size: 16px; }
+.hc-head { display: flex; align-items: center; gap: 8px; }
+.hc-icon { display: inline-flex; }
 .hc-name { font-family: var(--font-prose); font-size: 17px; font-weight: 600; flex: 1; min-width: 0; }
 .hc-type {
   font-size: 10px;
@@ -2024,6 +2013,9 @@ textarea { resize: vertical; line-height: 1.5; }
 }
 .hero-top { display: flex; align-items: center; justify-content: space-between; }
 .hero-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -2072,7 +2064,9 @@ textarea { resize: vertical; line-height: 1.5; }
   padding: 10px 12px;
 }
 .read-notes-label {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
@@ -2393,6 +2387,7 @@ textarea { resize: vertical; line-height: 1.5; }
 }
 .codex-nav-group-head:hover { color: var(--text-dim); }
 .codex-nav-group-head .count { margin-left: auto; opacity: 0.7; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.codex-nav-group-head span:not(.codex-nav-caret):not(.count) { display: inline-flex; align-items: center; gap: 4px; }
 .codex-nav-caret { display: inline-block; transition: transform 0.15s; font-size: 10px; }
 .codex-nav-caret.collapsed { transform: rotate(-90deg); }
 
@@ -2438,6 +2433,9 @@ textarea { resize: vertical; line-height: 1.5; }
 
 .article-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
 .article-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -2519,7 +2517,14 @@ textarea { resize: vertical; line-height: 1.5; }
 }
 .graph-node:hover .node-circle { filter: brightness(1.2); }
 .graph-node.selected .node-circle { stroke: var(--text); stroke-width: 2.5; }
-.graph-node .node-icon { pointer-events: none; }
+.graph-node .node-icon {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  overflow: visible;
+}
 .graph-node .node-label {
   fill: var(--text);
   font-size: 12px;

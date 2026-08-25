@@ -42,14 +42,14 @@ export default function CodexArticle({ entry, onSelectEntry, onDeleted, mentions
             placeholder="Name"
             onChange={(e) => patch({ name: e.target.value })}
           />
-          <span className="article-type">{typeMeta?.icon} {typeMeta?.label}</span>
+          <span className="article-type">{typeMeta?.icon && <typeMeta.icon size={14} />} {typeMeta?.label}</span>
           <button className="mini-btn" title="Done editing" onClick={() => setEditing(false)}>Done</button>
           <button className="danger-btn article-delete" onClick={del}>Delete</button>
         </div>
       ) : (
         <div className="detail-hero" style={{ '--hero': entry.color }}>
           <div className="hero-top">
-            <span className="hero-type">{typeMeta?.icon} {typeMeta?.label}</span>
+            <span className="hero-type">{typeMeta?.icon && <typeMeta.icon size={14} />} {typeMeta?.label}</span>
             <button className="mini-btn" onClick={() => setEditing(true)}>✎ Edit</button>
           </div>
           <h2 className="hero-name">{entry.name}</h2>

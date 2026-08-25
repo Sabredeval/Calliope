@@ -1,4 +1,5 @@
 import React from 'react'
+import { Library } from 'lucide-react'
 import { SCENE_STATUSES } from '../../store.jsx'
 
 const TOOLS = [
@@ -71,7 +72,7 @@ export default function EditorToolbar({
         <span className="hl-icon">A</span>
       </button>
       <button className="tool-btn" title={focusMode ? 'Exit focus mode (Esc)' : 'Focus mode'} onClick={onToggleFocus}>{focusMode ? '⤡' : '⤢'}</button>
-      <button className="tool-btn" title={showMentions ? 'Hide codex panel' : 'Show codex panel'} onClick={onToggleMentions}>📚</button>
+      <button className="tool-btn" title={showMentions ? 'Hide codex panel' : 'Show codex panel'} onClick={onToggleMentions}><Library size={15} /></button>
     </div>
   )
 }
