@@ -19,6 +19,8 @@ export function reducer(state, action) {
         groupId: parentId,
         order: siblingsAt(state.chapters, state.groups || [], parentId).length,
         content: '<p></p>',
+        summary: '',
+        status: 'idea',
         scenes: [],
       }
       // reuses the same "just created, jump to it" side-channel as scene/add

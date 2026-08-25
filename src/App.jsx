@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { Sun, ScrollText, Moon, BookMarked, History } from 'lucide-react'
+import { Sun, ScrollText, Moon, BookMarked, History, LayoutGrid } from 'lucide-react'
 import { StoreProvider, useStore, novelWords, loadLibrary, saveLibrary, buildManuscriptTree } from './store.jsx'
 import LibraryView from './components/library/LibraryView.jsx'
 import ManuscriptSidebar from './components/editor/ManuscriptSidebar.jsx'
 import Editor from './components/editor/Editor.jsx'
 import CodexView from './components/codex/CodexView.jsx'
+import PlanView from './components/plan/PlanView.jsx'
 import TimelineView from './components/timeline/TimelineView.jsx'
 import SearchModal from './components/modals/SearchModal.jsx'
 import ExportModal from './components/modals/ExportModal.jsx'
@@ -53,12 +54,13 @@ const Icons = {
     </svg>
   ),
   codex: <BookMarked width={20} height={20} strokeWidth={1.5} aria-hidden="true" />,
+  plan: <LayoutGrid width={20} height={20} strokeWidth={1.5} aria-hidden="true" />,
   timeline: <History width={20} height={20} strokeWidth={1.5} aria-hidden="true" />,
 }
 
 function Shell({ onLibrary }) {
   const { state, dispatch } = useStore()
-  const [view, setView] = useState('write') // 'write' | 'codex' | 'timeline'
+  const [view, setView] = useState('write') // 'write' | 'codex' | 'plan' | 'timeline'
   const [selectedSceneId, setSelectedSceneId] = useState(null)
   const [selectedCodexId, setSelectedCodexId] = useState(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -179,6 +181,7 @@ function Shell({ onLibrary }) {
 
           <nav className="view-tabs">
             <button className={view === 'write' ? 'active' : ''} onClick={() => setView('write')}>Write</button>
+            <button className={view === 'plan' ? 'active' : ''} onClick={() => setView('plan')}>Plan</button>
             <button className={view === 'codex' ? 'active' : ''} onClick={() => setView('codex')}>Codex</button>
             <button className={view === 'timeline' ? 'active' : ''} onClick={() => setView('timeline')}>Timeline</button>
           </nav>
@@ -211,6 +214,9 @@ function Shell({ onLibrary }) {
 
         <button className={`ab-btn ${view === 'write' ? 'active' : ''}`} title="Write" onClick={() => setView('write')}>
           {Icons.write}
+        </button>
+        <button className={`ab-btn ${view === 'plan' ? 'active' : ''}`} title="Plan" onClick={() => setView('plan')}>
+          {Icons.plan}
         </button>
         <button className={`ab-btn ${view === 'codex' ? 'active' : ''}`} title="Codex" onClick={() => setView('codex')}>
           {Icons.codex}
@@ -264,6 +270,9 @@ function Shell({ onLibrary }) {
               onToggleFocus={() => setFocusMode((v) => !v)}
             />
           </>
+        )}
+        {view === 'plan' && (
+          <PlanView onOpenScene={openScene} />
         )}
         {view === 'codex' && (
           <CodexView selectedId={selectedCodexId} onSelect={setSelectedCodexId} onOpenScene={openScene} />
