@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react'
-import { Sun, ScrollText, Moon, BookMarked, History, LayoutGrid } from 'lucide-react'
-import { StoreProvider, useStore, novelWords, loadLibrary, saveLibrary, buildManuscriptTree } from './store.jsx'
+import React, { useState, useEffect, useCallback } from 'react'
+import { Sun, ScrollText, Moon, BookMarked, History, LayoutGrid, Flame } from 'lucide-react'
+import { StoreProvider, useStore, novelWords, loadLibrary, saveLibrary, buildManuscriptTree, useWritingLog } from './store.jsx'
+import StreakPanel from './components/streak/StreakPanel.jsx'
+import MilestoneToast from './components/streak/MilestoneToast.jsx'
 import LibraryView from './components/library/LibraryView.jsx'
 import ManuscriptSidebar from './components/editor/ManuscriptSidebar.jsx'
 import Editor from './components/editor/Editor.jsx'
@@ -69,6 +71,11 @@ function Shell({ onLibrary }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
   const [scrollReq, setScrollReq] = useState(null)
+  const [streakOpen, setStreakOpen] = useState(false)
+  const closeStreak = useCallback(() => setStreakOpen(false), [])
+
+  const totalWords = novelWords(state.chapters)
+  const { stats: streakStats, pendingMilestone, dismissMilestone } = useWritingLog(state, dispatch, totalWords)
 
   const theme = state.settings.theme || 'dark'
   const nextTheme = (value) => (value === 'dark' ? 'light' : value === 'light' ? 'parchment' : 'dark')
@@ -126,7 +133,6 @@ function Shell({ onLibrary }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const totalWords = novelWords(state.chapters)
   const goal = Number(state.novel.wordGoal) || 0
   const pct = goal ? Math.min(100, Math.round((totalWords / goal) * 100)) : null
 
@@ -193,6 +199,25 @@ function Shell({ onLibrary }) {
                 <div className="wp-bar"><div className="wp-fill" style={{ width: `${pct}%` }} /></div>
               )}
             </div>
+            <div className="streak-anchor">
+              <button
+                className={`icon-btn streak-btn ${streakStats.streak > 0 ? 'lit' : ''}`}
+                title="Writing streak"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => setStreakOpen((v) => !v)}
+              >
+                <Flame size={18} />
+                {streakStats.streak > 0 && <span className="streak-badge">{streakStats.streak}</span>}
+              </button>
+              {streakOpen && (
+                <StreakPanel
+                  stats={streakStats}
+                  dailyGoal={state.writingLog?.dailyGoal}
+                  onSetGoal={(goal) => dispatch({ type: 'writingLog/setDailyGoal', goal })}
+                  onClose={closeStreak}
+                />
+              )}
+            </div>
             <button className="icon-btn" title="Search (Ctrl+K)" onClick={() => setSearchOpen(true)}>{Icons.search}</button>
             <button className="icon-btn" title="Export manuscript" onClick={() => setExportOpen(true)}>{Icons.export}</button>
             <button
@@ -227,6 +252,25 @@ function Shell({ onLibrary }) {
 
         <div className="ab-spacer" />
 
+        <div className="streak-anchor">
+          <button
+            className={`ab-btn streak-btn ${streakStats.streak > 0 ? 'lit' : ''}`}
+            title="Writing streak"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setStreakOpen((v) => !v)}
+          >
+            <Flame size={20} />
+            {streakStats.streak > 0 && <span className="streak-badge">{streakStats.streak}</span>}
+          </button>
+          {streakOpen && (
+            <StreakPanel
+              stats={streakStats}
+              dailyGoal={state.writingLog?.dailyGoal}
+              onSetGoal={(goal) => dispatch({ type: 'writingLog/setDailyGoal', goal })}
+              onClose={closeStreak}
+            />
+          )}
+        </div>
         <button className="ab-btn" title="Search (Ctrl+K)" onClick={() => setSearchOpen(true)}>{Icons.search}</button>
         <button className="ab-btn" title="Export manuscript" onClick={() => setExportOpen(true)}>{Icons.export}</button>
         <button
@@ -293,6 +337,7 @@ function Shell({ onLibrary }) {
       {exportOpen && <ExportModal onClose={() => setExportOpen(false)} />}
       {settingsOpen && <AppSettingsModal onClose={() => setSettingsOpen(false)} />}
       {detailsOpen && <NovelSettingsModal onClose={() => setDetailsOpen(false)} />}
+      <MilestoneToast milestone={pendingMilestone} onDismiss={dismissMilestone} />
     </div>
   )
 }

@@ -152,7 +152,7 @@ function ItemDetail({ item, onClose, onOpenScene, onOpenCodexEntry }) {
             <optgroup label="Codex">
               {state.codex.map((e) => {
                 const t = CODEX_TYPES.find((c) => c.id === e.type)
-                return <option key={e.id} value={`codex:${e.id}`}>{t?.icon} {e.name}</option>
+                return <option key={e.id} value={`codex:${e.id}`}>{t?.label ? `${t.label} · ` : ''}{e.name}</option>
               })}
             </optgroup>
           </select>

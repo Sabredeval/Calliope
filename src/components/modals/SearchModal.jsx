@@ -38,7 +38,7 @@ export default function SearchModal({ onClose, onOpenScene, onOpenCodex }) {
       if (hay.includes(query)) {
         const t = CODEX_TYPES.find((c) => c.id === e.type)
         out.push({
-          kind: 'codex', id: e.id, title: `${t?.icon || ''} ${e.name}`,
+          kind: 'codex', id: e.id, title: e.name,
           context: `Codex · ${t?.label || e.type}`,
           snippet: snippet(`${e.oneLiner} ${e.description}`.trim(), query),
           color: e.color,

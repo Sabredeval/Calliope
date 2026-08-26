@@ -51,6 +51,18 @@ export default function AppSettingsModal({ onClose }) {
           </label>
         </div>
 
+        <h4 className="settings-section">Habit tracking</h4>
+
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={!!state.settings.showSessionStats}
+            onChange={(e) => setSetting({ showSessionStats: e.target.checked })}
+          />
+          Show live session stats (words/minute) while writing
+        </label>
+        <p className="settings-note">Off by default — a live pace readout is motivating for some writers and distracting or discouraging for others.</p>
+
         <h4 className="settings-section">Editor</h4>
 
         <div className="field-row">

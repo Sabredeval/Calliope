@@ -319,6 +319,31 @@ export function reducer(state, action) {
     case 'timeline/item/delete':
       return { ...state, timeline: { ...state.timeline, items: state.timeline.items.filter((i) => i.id !== action.id) } }
 
+    // records today's running total word count under today's date key —
+    // called on word-count change (debounced) rather than per-keystroke, so
+    // it's cheap to fire often; overwriting today's entry is intentional,
+    // only *past* days are ever treated as frozen/final
+    case 'writingLog/sync':
+      return {
+        ...state,
+        writingLog: {
+          ...state.writingLog,
+          days: { ...state.writingLog.days, [action.dateKey]: action.total },
+        },
+      }
+    case 'writingLog/setDailyGoal':
+      return { ...state, writingLog: { ...state.writingLog, dailyGoal: Math.max(0, action.goal) } }
+    case 'writingLog/markMilestoneSeen':
+      return {
+        ...state,
+        writingLog: {
+          ...state.writingLog,
+          seenMilestones: state.writingLog.seenMilestones.includes(action.id)
+            ? state.writingLog.seenMilestones
+            : [...state.writingLog.seenMilestones, action.id],
+        },
+      }
+
     case 'state/replace':
       return action.state
 

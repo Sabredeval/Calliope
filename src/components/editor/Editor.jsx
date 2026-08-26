@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import {
   useStore, uid, plainText, countWords, findMentions, novelWords,
-  buildManuscriptTree, CODEX_TYPES, SCENE_STATUSES,
+  buildManuscriptTree, CODEX_TYPES, SCENE_STATUSES, useSessionStats,
 } from '../../store.jsx'
 import EditorInspector from './EditorInspector.jsx'
 import { CodexHoverCard, CodexSelectionPopover, CodexToast, HighlightPopover } from './EditorOverlays.jsx'
@@ -154,6 +154,7 @@ export default function Editor({
 
   const totalWords = novelWords(state.chapters)
   const activeWords = countWords(activeText)
+  const { wpm } = useSessionStats(totalWords, !!state.settings.showSessionStats)
   const statusOf = (scene) => SCENE_STATUSES.find((status) => status.id === scene.status)
   const tree = useMemo(
     () => buildManuscriptTree(state.chapters, state.groups),
@@ -180,13 +181,18 @@ export default function Editor({
     return order
   }, [tree])
 
+  const scrollFrame = useRef(null)
   const handleScroll = () => {
-    onScroll()
-    updateCurPage()
     setSelPop(null)
     setHlPop(null)
     cancelHoverHide()
     setHoverCard(null)
+    if (scrollFrame.current !== null) return
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = null
+      onScroll()
+      updateCurPage()
+    })
   }
 
   return (
@@ -300,6 +306,12 @@ export default function Editor({
           </button>
           <span className="foot-dim">·</span>
           <span>{totalWords.toLocaleString()} total</span>
+          {wpm !== null && (
+            <>
+              <span className="foot-dim">·</span>
+              <span title="Words per minute, this session">{wpm} wpm</span>
+            </>
+          )}
           <span className="foot-dim">· autosaved</span>
         </footer>
       </div>

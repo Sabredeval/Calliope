@@ -19,6 +19,7 @@ export const blankState = (title = 'Untitled Novel', author = '', theme = 'dark'
   codex: [],
   relationships: [],
   timeline: { unit: 'Year', tracks: [{ id: uid(), title: 'Story' }], items: [] },
+  writingLog: { days: {}, dailyGoal: 500, seenMilestones: [] },
   settings: { theme },
 })
 
@@ -27,6 +28,10 @@ export const blankState = (title = 'Untitled Novel', author = '', theme = 'dark'
 const ensureHierarchyDefaults = (data) => {
   if (!Array.isArray(data.groups)) data.groups = []
   if (!Array.isArray(data.threads)) data.threads = []
+  if (!data.writingLog || typeof data.writingLog !== 'object') data.writingLog = {}
+  if (!data.writingLog.days || typeof data.writingLog.days !== 'object') data.writingLog.days = {}
+  if (!Number.isFinite(data.writingLog.dailyGoal)) data.writingLog.dailyGoal = 500
+  if (!Array.isArray(data.writingLog.seenMilestones)) data.writingLog.seenMilestones = []
   for (const c of data.chapters || []) {
     if (c.groupId === undefined) c.groupId = null
     if (c.content === undefined) c.content = '<p></p>'

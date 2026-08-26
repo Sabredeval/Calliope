@@ -106,7 +106,7 @@ export function EntryTypeColorFields({ entry, patch }) {
         <span className="field-label">Type</span>
         <select value={entry.type} onChange={(e) => patch({ type: e.target.value })}>
           {CODEX_TYPES.map((t) => (
-            <option key={t.id} value={t.id}>{t.icon} {t.label}</option>
+            <option key={t.id} value={t.id}>{t.label}</option>
           ))}
         </select>
       </label>
