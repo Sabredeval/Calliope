@@ -1,6 +1,6 @@
 # Calliope
 
-A professional novel-writing studio. A distraction-light manuscript editor wrapped around a living story bible. Write in one continuous flow, and let the codex, timeline, relationship graph, and inspector keep the world of your book at your fingertips.
+A professional novel-writing studio. A distraction-light manuscript editor wrapped around a living story bible. Write in one continuous flow, and let the codex, plan board, timeline, relationship graph, and inspector keep the world of your book at your fingertips.
 
 Inspired by novelCrafter and Scrivener.
 
@@ -10,7 +10,6 @@ Inspired by novelCrafter and Scrivener.
 npm install
 npm run dev        # development server (usually http://localhost:5173)
 npm run build      # production build into dist/
-npm test           # test suite in watch mode (see TESTING.md)
 ```
 
 ## The app, view by view
@@ -32,6 +31,13 @@ The heart of the app: the whole novel as **one continuous scrolling manuscript**
   - *Highlights* — every highlight in manuscript order, with comments; click to jump.
   - *Scene* — title, status (Idea → Draft → Revised → Done), and summary of the scene under your cursor.
 
+### Plan
+A structural view of the manuscript, separate from the linear act of writing.
+
+- **Board** — a corkboard of chapter cards grouped into columns by Act, drag-and-drop to reorder or move between acts. Each card carries a synopsis (click to edit), a status dot (click to cycle Idea → Draft → Revised → Done), and word count. Plot **threads** can be created, colored, and tagged onto chapters, then used to highlight or filter the board by subplot.
+- **Pacing** — chapter-length bars in manuscript order, colored by status, plus a cumulative word-count line against an even-pace reference to the novel's word goal.
+- **Cast** — a presence matrix of Codex characters × chapters, derived from the same name/alias detection used in Write; darker cells mean more mentions. Click a cell to jump to that chapter, a name to open the character in Codex.
+
 ### Codex
 The story bible. Five entry types — Characters, Locations, Items, Lore, Organizations — with aliases (also used for in-text detection), one-liners, descriptions, private notes, tags, and color coding. Entries open as **read-first wiki articles** with an edit mode behind a button. The **Relations view** renders the cast as a live force-directed graph: drag, zoom, hover to spotlight a neighborhood, link two entries by clicking them, label and direct the edges.
 
@@ -52,13 +58,28 @@ React 18 + Vite, no UI framework — hand-rolled CSS design system with theming 
 ```
 src/
   App.jsx                  shell: routing, activity bar / top bar, appearance
-  store.jsx                data model, reducer, persistence, library, migrations
+  store.jsx                re-exports the store/ modules below
+  store/
+    model.js                types, constants, seed data
+    reducer.js               the single reducer for all state changes
+    selectors.js             derived data (manuscript tree, mentions, etc.)
+    persistence.js           localStorage, library index, save migrations
   styles.css               design system (themes, every component's styles)
   components/
     library/               bookshelf home screen
     editor/                continuous manuscript editor + binder sidebar
     codex/                 codex views, wiki article, relationship graph
+    plan/                  corkboard, pacing chart, cast presence chart
     timeline/              timeline view
     modals/                search, export, novel details, settings
-  test/                    Vitest + Testing Library suite (see TESTING.md)
 ```
+
+## Roadmap
+
+Everything above is built. These are the gaps most worth closing next, roughly in priority order:
+
+- **Backup safety net** — the novel lives only in `localStorage`; a cleared browser profile loses it for good. Periodic autosave-to-file (via the File System Access API, or scheduled `.calliope.json` snapshots) would remove the single point of failure.
+- **Richer export** — Markdown/plain text only today. DOCX and EPUB would make the manuscript submission- and e-reader-ready without leaving the app.
+- **Writing habit tracking** — the word-goal bar is static. A daily target, a streak, and a session timer would turn it into an actual habit tool, and would pair naturally with the Plan → Pacing chart already built.
+- **Cross-linking Plan, Timeline, and Codex** — threads, timeline events, and codex relationships are three separate systems today with no shared view. Surfacing a chapter's timeline events on its Plan card, or a thread's chapters on the Timeline, would tie the story-structure tools together.
+- **Find and replace** — `Ctrl/Cmd+K` already searches inside manuscript prose and jumps to the result, but there's no way to replace a match (or all matches) once you're there — useful for a late character rename or a consistent spelling fix across the whole novel.
